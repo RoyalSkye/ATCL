@@ -87,7 +87,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default=256, help='batch_size of ordinary labels.')
     parser.add_argument('--dataset', type=str, default="cifar10", choices=['mnist', 'cifar10'],
                         help="dataset, choose from mnist, cifar10")
-    parser.add_argument('--method', type=str, default='nn', choices=['free', 'nn', 'ga', 'pc', 'forward'],
+    parser.add_argument('--method', type=str, default='nn', choices=['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp'],
                         help='method type. ga: gradient ascent. nn: non-negative. free: Theorem 1. pc: Ishida2017. forward: Yu2018.')
     parser.add_argument('--model', type=str, default='resnet', choices=['linear', 'mlp', 'resnet'], help='model name',)
     parser.add_argument('--epochs', default=100, type=int, help='number of epochs')

@@ -22,7 +22,7 @@ def non_negative_loss(f, K, labels, ccp, beta):
             idxs = idx.view(-1, 1).repeat(1, K)  # (bs, K)
             neglog_k = torch.masked_select(neglog, idxs).view(-1, K)
             temp_loss_vector[k] = -(K-1) * ccp[k] * torch.mean(neglog_k, dim=0)[k]  # average of k-th class loss for k-th comp class samples
-            loss_vector = loss_vector + torch.mul(ccp, torch.mean(neglog_k, dim=0))  # only k-th in the summation of the second term inside max 
+            loss_vector = loss_vector + torch.mul(ccp[k], torch.mean(neglog_k, dim=0))  # only k-th in the summation of the second term inside max
     loss_vector = loss_vector + temp_loss_vector
     count = np.bincount(labels.data.cpu()).astype('float')
     while len(count) < K:
@@ -70,6 +70,12 @@ def accuracy_check(loader, model):
     return 100 * total / num_samples
 
 
+def scl_exp(f, K, labels):
+    bs = labels.size(0)
+    final_loss = (K - 1) * torch.mean(torch.exp(f[torch.arange(bs), labels]))
+    return final_loss
+
+
 def chosen_loss_c(f, K, labels, ccp, meta_method):
     class_loss_torch = None
     if meta_method == 'free':
@@ -83,4 +89,6 @@ def chosen_loss_c(f, K, labels, ccp, meta_method):
         final_loss = forward_loss(f=f, K=K, labels=labels)
     elif meta_method == 'pc':
         final_loss = pc_loss(f=f, K=K, labels=labels)
+    elif meta_method == "scl_exp":
+        final_loss = scl_exp(f=f, K=K, labels=labels)
     return final_loss, class_loss_torch

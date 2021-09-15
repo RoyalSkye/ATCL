@@ -21,16 +21,25 @@ Specify the `model` argument:
 - `linear`: Linear model
 - `mlp`: Multi-layer perceptron with one hidden layer (500 units)
 
-```shell
-dYAfs2Dm
+#### Results on CIFAR-10 (CL) - [Logs](https://drive.google.com/drive/folders/1EhzJDNdAbWm6yGQ8yev128leVsjXji3p?usp=sharing)
 
-# ATCL - unbiased_risk_estimator / ga
+> Settings: For CIFAR-10, ResNet-34 was used with weight decay of 5e−4 and initial learning rate of 1e−2. For optimization, SGD was used with the momentum set to 0.9. Learning rate was halved every 30 epochs. We train the model for 300 epochs with batch_size = 256.
 
-# ATCL1 - assump_free_loss / nn
+|             CL              |  nature_test_acc  |
+| :-------------------------: | :---------------: |
+| ~~unbiased_risk_estimator~~ |  ~~9.29 / 26.2~~  |
+|      free (Ishida 19)       |   11.61 / 29.15   |
+|       nn (Ishida 19)        |   23.78 / 35.27   |
+|       ga (Ishida 19)        |   31.43 / 31.67   |
+|      ~~modified_free~~      | ~~11.68 / 24.00~~ |
+|       ~~modified_nn~~       | ~~22.50 / 34.73~~ |
+|       ~~modified_ga~~       | ~~26.91 / 27.42~~ |
+|         ~~scl_exp~~         | ~~10.00 / 10.00~~ |
 
-# ATCL2 - min ure_nn max ure_nn
-CUDA_VISIBLE_DEVICES=0 nohup python -u main.py 2>&1 &
-# ATCL3 - min ure_nn min ce
-CUDA_VISIBLE_DEVICES=1 nohup python -u main.py --loss "biased" 2>&1 &
-```
 
+
+|           **AT**            |                   |
+| :-------------------------: | :---------------: |
+|      adv_min_nn_max_nn      |                   |
+|      adv_min_nn_min_ce      |                   |
+|    adv_min_free_max_free    |                   |

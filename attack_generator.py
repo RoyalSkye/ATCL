@@ -49,6 +49,7 @@ def pgd(model, data, target, true_labels, epsilon, step_size, num_steps, K, ccp,
         x_adv = torch.min(torch.max(x_adv, data - epsilon), data + epsilon)
         x_adv = torch.clamp(x_adv, 0.0, 1.0)
     x_adv = Variable(x_adv, requires_grad=False)
+    y_adv = torch.cat((y_adv, target))
     y_adv = y_adv.view(-1, bs).transpose(0, 1)
     return x_adv, y_adv
 
@@ -76,7 +77,7 @@ def eval_robust(model, test_loader, perturb_steps, epsilon, step_size, loss_fn, 
     with torch.enable_grad():
         for data, target, index in test_loader:
             data, target = data.to(device), target.to(device)
-            x_adv, _ = GA_PGD(model, data, target, epsilon, step_size, perturb_steps, loss_fn, category, rand_init=random)
+            x_adv, _ = pgd(model, data, target, epsilon, step_size, perturb_steps, loss_fn, category, rand_init=random)
             output = model(x_adv)
             test_loss += F.cross_entropy(output, target, reduction="sum").item()
             pred = output.max(1, keepdim=True)[1]
