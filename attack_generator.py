@@ -21,7 +21,7 @@ def cwloss(output, target, confidence=50, num_classes=10):
     return loss
 
 
-def pgd(model, data, target, true_labels, epsilon, step_size, num_steps, K, ccp, meta_method="nn", loss_fn="unbiased", category="Madry", rand_init=True):
+def pgd(model, data, target, true_labels, epsilon, step_size, num_steps, K, ccp, generate_cl_steps=100, meta_method="nn", loss_fn="unbiased", category="Madry", rand_init=True):
     model.eval()
     y_adv, bs = true_labels, true_labels.size(0)
     if category == "trades":
@@ -29,28 +29,40 @@ def pgd(model, data, target, true_labels, epsilon, step_size, num_steps, K, ccp,
     if category == "Madry":
         x_adv = data.detach() + torch.from_numpy(np.random.uniform(-epsilon, epsilon, data.shape)).float().to(device) if rand_init else data.detach()
         x_adv = torch.clamp(x_adv, 0.0, 1.0)
-    for k in range(num_steps):
-        x_adv.requires_grad_()
-        output = model(x_adv)
+
+    # generate multiple complementary labels
+    x_adv_unlimited = x_adv.clone()
+    for k in range(generate_cl_steps):
+        x_adv_unlimited.requires_grad_()
+        output = model(x_adv_unlimited)
         predict = torch.max(output.detach(), dim=1)[1]
         y_adv = torch.cat((y_adv, predict))
         model.zero_grad()
         with torch.enable_grad():
-            if loss_fn == "unbiased":
-                loss_adv, _ = chosen_loss_c(f=output, K=K, labels=target, ccp=ccp, meta_method=meta_method)
-            elif loss_fn == "biased":
-                loss_adv = nn.CrossEntropyLoss(reduction="mean")(output, target)
+            # loss_adv, _ = chosen_loss_c(f=output, K=K, labels=target, ccp=ccp, meta_method=meta_method)
+            loss_adv = nn.CrossEntropyLoss(reduction="mean")(output, target)
+        loss_adv.backward()
+        eta = step_size * x_adv_unlimited.grad.sign()
+        x_adv_unlimited = x_adv_unlimited.detach() - eta
+    x_adv_unlimited = Variable(x_adv_unlimited, requires_grad=False)
+    y_adv = torch.cat((y_adv, target))
+    y_adv = y_adv.view(-1, bs).transpose(0, 1)
+
+    # generate adversarial examples
+    for k in range(num_steps):
+        x_adv.requires_grad_()
+        output = model(x_adv)
+        model.zero_grad()
+        with torch.enable_grad():
+            loss_adv, _ = chosen_loss_c(f=output, K=K, labels=target, ccp=ccp, meta_method=meta_method)
+            # loss_adv = nn.CrossEntropyLoss(reduction="mean")(output, target)
         loss_adv.backward()
         eta = step_size * x_adv.grad.sign()
-        if loss_fn == "biased":
-            eta *= -1
         # Update adversarial data
         x_adv = x_adv.detach() + eta
         x_adv = torch.min(torch.max(x_adv, data - epsilon), data + epsilon)
         x_adv = torch.clamp(x_adv, 0.0, 1.0)
     x_adv = Variable(x_adv, requires_grad=False)
-    y_adv = torch.cat((y_adv, target))
-    y_adv = y_adv.view(-1, bs).transpose(0, 1)
     return x_adv, y_adv
 
 

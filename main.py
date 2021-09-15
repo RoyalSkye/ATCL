@@ -14,7 +14,7 @@ def adversarial_train(args, model, optimizer):
             images, cl_labels, true_labels = images.to(device), cl_labels.to(device), true_labels.to(device)
             # Get adversarial data
             x_adv, y_adv = pgd(model, images, cl_labels, true_labels, args.epsilon, args.step_size, args.num_steps, K, ccp,
-                               meta_method=args.method, loss_fn=args.loss, category="Madry", rand_init=True)
+                               generate_cl_steps=100, meta_method=args.method, loss_fn=args.loss, category="Madry", rand_init=True)
             model.train()
             optimizer.zero_grad()
             logit = model(x_adv)
@@ -23,7 +23,7 @@ def adversarial_train(args, model, optimizer):
             optimizer.step()
 
             if batch_idx == 0:
-                torch.set_printoptions(threshold=5000)
+                torch.set_printoptions(threshold=30000)
                 print(y_adv)
                 print()
 
@@ -82,7 +82,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default=256, help='batch_size of ordinary labels.')
     parser.add_argument('--dataset', type=str, default="cifar10", choices=['mnist', 'cifar10'],
                         help="dataset, choose from mnist, cifar10")
-    parser.add_argument('--method', type=str, default='nn', choices=['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp'],
+    parser.add_argument('--method', type=str, default='free', choices=['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp'],
                         help='method type. ga: gradient ascent. nn: non-negative. free: Theorem 1. pc: Ishida2017. forward: Yu2018.')
     parser.add_argument('--model', type=str, default='resnet', choices=['linear', 'mlp', 'resnet'], help='model name',)
     parser.add_argument('--epochs', default=300, type=int, help='number of epochs')
