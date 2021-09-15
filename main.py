@@ -7,7 +7,6 @@ from attack_generator import *
 
 def adversarial_train(args, model, optimizer):
     lr, best_acc = args.lr, 0
-    y_list = []
     for epoch in range(args.epochs):
         lr = lr_schedule(lr, epoch + 1)
         optimizer.param_groups[0].update(lr=lr)
@@ -24,7 +23,9 @@ def adversarial_train(args, model, optimizer):
             optimizer.step()
 
             if batch_idx == 0:
-                y_list.append(y_adv)
+                torch.set_printoptions(threshold=5000)
+                print(y_adv)
+                print()
 
         # Evalutions
         train_accuracy = accuracy_check(loader=train_loader, model=model)
@@ -34,17 +35,11 @@ def adversarial_train(args, model, optimizer):
         # _, cw_acc = eval_robust(model, test_loader, perturb_steps=30, epsilon=0.031, step_size=0.031 / 4, loss_fn="cw", category="Madry", random=True)
         print('Epoch: [%d | %d] | Learning Rate: %f | Natural Train Acc %.4f | Natural Test Acc %.4f |\n' % (epoch+1, args.epochs, lr, train_accuracy, test_accuracy))
 
-    torch.set_printoptions(threshold=5000)
-    for e, i in enumerate(y_list):
-        print("Epoch {}".format(e+1))
-        print(i)
-        print()
-
 
 def complementary_learning(args, model, optimizer):
     lr = args.lr
     save_table = np.zeros(shape=(args.epochs, 3))
-    for epoch in range(args.epochs):
+    for epoch in range(args.warmup_epochs):
         lr = lr_schedule(lr, epoch + 1)
         optimizer.param_groups[0].update(lr=lr)
         for i, (images, cl_labels, true_labels) in enumerate(complementary_train_loader):
@@ -90,7 +85,7 @@ if __name__ == "__main__":
     parser.add_argument('--method', type=str, default='nn', choices=['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp'],
                         help='method type. ga: gradient ascent. nn: non-negative. free: Theorem 1. pc: Ishida2017. forward: Yu2018.')
     parser.add_argument('--model', type=str, default='resnet', choices=['linear', 'mlp', 'resnet'], help='model name',)
-    parser.add_argument('--epochs', default=100, type=int, help='number of epochs')
+    parser.add_argument('--epochs', default=300, type=int, help='number of epochs')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='weight decay')
     parser.add_argument('--momentum', type=float, default=0.9, help='SGD momentum')
     parser.add_argument('--seed', type=int, default=1, help='random seed')
@@ -100,6 +95,7 @@ if __name__ == "__main__":
     parser.add_argument('--epsilon', type=float, default=0.031, help='perturbation bound')
     parser.add_argument('--num_steps', type=int, default=10, help='maximum perturbation step K')
     parser.add_argument('--step_size', type=float, default=0.007, help='step size')
+    parser.add_argument('--warmup_epochs', default=0, type=int, help='number of cl warmup epochs')
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -136,6 +132,7 @@ if __name__ == "__main__":
     print('Epoch: 0. Train_Set Acc: {}. Test_Set Acc: {}'.format(train_accuracy, test_accuracy))
 
     # complementary learning, ref to "Complementary-label learning for arbitrary losses and models"
-    # complementary_learning(args, model, optimizer)
+    if args.warmup_epochs > 0:
+        complementary_learning(args, model, optimizer)
 
     adversarial_train(args, model, optimizer)

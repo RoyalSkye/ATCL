@@ -32,7 +32,7 @@ def pgd(model, data, target, true_labels, epsilon, step_size, num_steps, K, ccp,
     for k in range(num_steps):
         x_adv.requires_grad_()
         output = model(x_adv)
-        predict = torch.max(output, dim=1)[1]
+        predict = torch.max(output.detach(), dim=1)[1]
         y_adv = torch.cat((y_adv, predict))
         model.zero_grad()
         with torch.enable_grad():
