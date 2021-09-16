@@ -25,6 +25,14 @@ Specify the `model` argument:
 #### Results on CIFAR-10 (CL) - [Logs](https://drive.google.com/drive/folders/1EhzJDNdAbWm6yGQ8yev128leVsjXji3p?usp=sharing)
 
 > Settings: For CIFAR-10, ResNet-34 was used with weight decay of 5e−4 and initial learning rate of 1e−2. For optimization, SGD was used with the momentum set to 0.9. Learning rate was halved every 30 epochs. We train the model for 300 epochs with batch_size = 256.
+>
+> **Currently, AT failed on `CIFAR10` (MNIST is ok), mainly due to the low nature acc of the model. If warmup for several epochs + decrease the num steps of PGD, AT can work normally.** 
+>
+> *Matrix in logs:*
+>
+> First column: `true label` of an image; Last column: original `complementary label` of an image; Others: the model prediction of generated adv examples as the pgd-100 progress, which can be viewed as extra (multiple) complementary labels.
+>
+> tensor([[2, 8, 8, 8, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ...])
 
 |             CL              | nature_test_acc (Last / Best) |
 | :-------------------------: | :---------------------------: |

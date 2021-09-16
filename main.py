@@ -1,4 +1,4 @@
-import argparse, time, os
+import argparse, time, os, random
 from utils_data import *
 from utils_algo import *
 from models import *
@@ -10,15 +10,22 @@ def adversarial_train(args, model, optimizer):
     for epoch in range(args.epochs):
         lr = lr_schedule(lr, epoch + 1)
         optimizer.param_groups[0].update(lr=lr)
-        for batch_idx, (images, cl_labels, true_labels) in enumerate(complementary_train_loader):
+        for batch_idx, (images, cl_labels, true_labels, id) in enumerate(complementary_train_loader):
+            random_cl_labels = []
+            for i in id:
+                mcls = x_to_mcls[i.item()]
+                cl = list(mcls)[0] if len(mcls) == 1 else random.sample(mcls, 1)[0]
+                random_cl_labels.append(cl)
+            random_cl_labels = torch.LongTensor(random_cl_labels).to(device)
             images, cl_labels, true_labels = images.to(device), cl_labels.to(device), true_labels.to(device)
+
             # Get adversarial data
-            x_adv, y_adv = pgd(model, images, cl_labels, true_labels, args.epsilon, args.step_size, args.num_steps, K, ccp,
-                               generate_cl_steps=100, meta_method=args.method, loss_fn=args.loss, category="Madry", rand_init=True)
+            x_adv, y_adv = adv_cl(model, images, random_cl_labels, true_labels, id, args.epsilon, args.step_size, args.num_steps, K, ccp, x_to_mcls,
+                               generate_cl_steps=args.generate_cl_steps, meta_method=args.method, category="Madry", rand_init=True)
             model.train()
             optimizer.zero_grad()
             logit = model(x_adv)
-            loss, _ = chosen_loss_c(f=logit, K=K, labels=cl_labels, ccp=ccp, meta_method=args.method)
+            loss, _ = chosen_loss_c(f=logit, K=K, labels=random_cl_labels, ccp=ccp, meta_method=args.method)
             loss.backward()
             optimizer.step()
 
@@ -28,12 +35,20 @@ def adversarial_train(args, model, optimizer):
                 print()
 
         # Evalutions
-        train_accuracy = accuracy_check(loader=train_loader, model=model)
-        test_accuracy = accuracy_check(loader=test_loader, model=model)
-        # _, test_nat_acc = eval_clean(model, test_loader)
-        # _, test_pgd20_acc = eval_robust(model, test_loader, perturb_steps=20, epsilon=0.031, step_size=0.031 / 4, loss_fn="cent", category="Madry", random=True)
-        # _, cw_acc = eval_robust(model, test_loader, perturb_steps=30, epsilon=0.031, step_size=0.031 / 4, loss_fn="cw", category="Madry", random=True)
-        print('Epoch: [%d | %d] | Learning Rate: %f | Natural Train Acc %.4f | Natural Test Acc %.4f |\n' % (epoch+1, args.epochs, lr, train_accuracy, test_accuracy))
+        test_nat_acc = accuracy_check(loader=test_loader, model=model)
+        _, test_pgd20_acc = eval_robust(model, test_loader, perturb_steps=20, epsilon=0.031, step_size=0.031 / 4, loss_fn="cent", category="Madry", random=True, num_classes=K)
+        # _, cw_acc = eval_robust(model, test_loader, perturb_steps=30, epsilon=0.031, step_size=0.031 / 4, loss_fn="cw", category="Madry", random=True, num_classes=K)
+
+        print('Epoch: [%d | %d] | Learning Rate: %f | Natural Test Acc %.4f | PGD20 Test Acc %.4f |\n' % (epoch+1, args.epochs, lr, test_nat_acc, test_pgd20_acc))
+
+        # Save the last checkpoint
+        torch.save({
+            'epoch': epoch + 1,
+            'state_dict': model.state_dict(),
+            'test_nat_acc': test_nat_acc,
+            'test_pgd20_acc': test_pgd20_acc,
+            'optimizer': optimizer.state_dict(),
+        }, os.path.join(args.out_dir, "checkpoint.pth.tar"))
 
 
 def complementary_learning(args, model, optimizer):
@@ -42,7 +57,7 @@ def complementary_learning(args, model, optimizer):
     for epoch in range(args.warmup_epochs):
         lr = lr_schedule(lr, epoch + 1)
         optimizer.param_groups[0].update(lr=lr)
-        for i, (images, cl_labels, true_labels) in enumerate(complementary_train_loader):
+        for i, (images, cl_labels, true_labels, id) in enumerate(complementary_train_loader):
             images, cl_labels, true_labels = images.to(device), cl_labels.to(device), true_labels.to(device)
             optimizer.zero_grad()
             outputs = model(images)
@@ -91,16 +106,22 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=int, default=1, help='random seed')
     parser.add_argument('--out_dir', type=str, default='./CLAT_result', help='dir of output')
     # for adv training
-    parser.add_argument('--loss', type=str, default='unbiased', choices=['unbiased', 'biased'], help='loss type for the max (minmax) formulation.')
     parser.add_argument('--epsilon', type=float, default=0.031, help='perturbation bound')
     parser.add_argument('--num_steps', type=int, default=10, help='maximum perturbation step K')
     parser.add_argument('--step_size', type=float, default=0.007, help='step size')
+    parser.add_argument('--generate_cl_steps', type=int, default=100, help='maximum step for generating multiple complementary labels, if <=0, skip it.')
     parser.add_argument('--warmup_epochs', default=0, type=int, help='number of cl warmup epochs')
     args = parser.parse_args()
 
+    # To be removed
+    args.epochs, args.warmup_epochs = 20, 20
+    if args.dataset == "mnist":
+        args.lr, args.model, args.weight_decay = 5e-5, 'mlp', 1e-4
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch.manual_seed(args.seed)
+    random.seed(args.seed)
     np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
@@ -110,7 +131,7 @@ if __name__ == "__main__":
         os.makedirs(args.out_dir)
 
     full_train_loader, train_loader, test_loader, ordinary_train_dataset, test_dataset, K, input_dim = prepare_data(dataset=args.dataset, batch_size=args.batch_size)
-    ordinary_train_loader, complementary_train_loader, ccp = prepare_train_loaders(full_train_loader=full_train_loader, batch_size=args.batch_size, ordinary_train_dataset=ordinary_train_dataset)
+    ordinary_train_loader, complementary_train_loader, ccp, x_to_mcls = prepare_train_loaders(full_train_loader=full_train_loader, batch_size=args.batch_size, ordinary_train_dataset=ordinary_train_dataset)
 
     if args.model == 'mlp':
         model = mlp_model(input_dim=input_dim, hidden_dim=500, output_dim=K)
