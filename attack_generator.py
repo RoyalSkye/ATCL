@@ -26,9 +26,10 @@ def adv_cl(model, data, target, true_labels, id, epsilon, step_size, num_steps, 
         min---max \bar{l}(\bar{y}, g(x))
            |--min cross-entropy(\bar{y}, g(x)) -> mcls
     """
-    # TODO: 1. how to discriminate between new_cls and true_labels, it's possible that new_cls == true_labels
+    # TODO: 1. how to discriminate between new_cls and true_labels, it's possible that new_cls == true_labels, e.g. prob margin
     #  2. how to use the new (m)cls - "learning with mcls"
     #  3. For CIFAR10, PGD num_steps can gradually increase to avoid failing
+    #  4. Co-teaching e.g., two models with different losses to generate mcls / gradient ascent
     model.eval()
     y_adv, bs = true_labels, true_labels.size(0)
     if category == "trades":
@@ -47,6 +48,7 @@ def adv_cl(model, data, target, true_labels, id, epsilon, step_size, num_steps, 
             output_index = []
             iter_index = []
             output = model(iter_adv)
+            # prob_ = torch.softmax(output.detach(), dim=1)
             predict = torch.max(output.detach(), dim=1)[1]
             predict_ext = torch.full((bs,), -1).to(device)
             predict_ext[remain_index] = predict
@@ -61,6 +63,8 @@ def adv_cl(model, data, target, true_labels, id, epsilon, step_size, num_steps, 
             with torch.enable_grad():
                 # loss_adv, _ = chosen_loss_c(f=output, K=K, labels=iter_target, ccp=ccp, meta_method=meta_method)
                 loss_adv = nn.CrossEntropyLoss(reduction="mean")(output, iter_target)
+                # one_hot = torch.zeros(iter_target.size(0), K).to(device).scatter_(1, iter_target.view(-1, 1), 1)
+                # loss_adv = nn.L1Loss(reduction="mean")(output, one_hot)
             loss_adv.backward()
             grad = iter_adv.grad
             if len(iter_index) != 0:
@@ -78,9 +82,10 @@ def adv_cl(model, data, target, true_labels, id, epsilon, step_size, num_steps, 
         # updata x_to_mcls
         for i, y in enumerate(y_adv):
             new_cls = torch.unique(y[1:]).tolist()
-            if -1 in new_cls:
-                new_cls.remove(-1)
-            new_cls.remove(y[-1])
+            if -1 in new_cls: new_cls.remove(-1)
+            # remove the potential true labels
+            if y[1] in new_cls: new_cls.remove(y[1])
+            if y[-1] in new_cls: new_cls.remove(y[-1])
             x_to_mcls[id[i].item()] = x_to_mcls[id[i].item()] | set(new_cls)
 
     # generate adversarial examples

@@ -21,7 +21,7 @@ def adversarial_train(args, model, optimizer):
 
             # Get adversarial data
             x_adv, y_adv = adv_cl(model, images, random_cl_labels, true_labels, id, args.epsilon, args.step_size, args.num_steps, K, ccp, x_to_mcls,
-                               generate_cl_steps=args.generate_cl_steps, meta_method=args.method, category="Madry", rand_init=True)
+                                  generate_cl_steps=args.generate_cl_steps, meta_method=args.method, category="Madry", rand_init=True)
             model.train()
             optimizer.zero_grad()
             logit = model(x_adv)
@@ -33,6 +33,13 @@ def adversarial_train(args, model, optimizer):
                 torch.set_printoptions(threshold=30000)
                 print(y_adv)
                 print()
+
+        # test how many data are given wrong cls
+        print(x_to_mcls)
+        count = 0
+        for k, v in x_to_mcls.items():
+            if x_to_tls[k] in v: count += 1
+        print("Epoch {}: {}/{}={}% data are given wrong complementary labels!".format(epoch+1, count, len(x_to_mcls), 100*count/len(x_to_mcls)))
 
         # Evalutions
         test_nat_acc = accuracy_check(loader=test_loader, model=model)
@@ -53,7 +60,7 @@ def adversarial_train(args, model, optimizer):
 
 def complementary_learning(args, model, optimizer):
     lr = args.lr
-    save_table = np.zeros(shape=(args.epochs, 3))
+    save_table = np.zeros(shape=(args.warmup_epochs, 3))
     for epoch in range(args.warmup_epochs):
         lr = lr_schedule(lr, epoch + 1)
         optimizer.param_groups[0].update(lr=lr)
@@ -97,7 +104,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default=256, help='batch_size of ordinary labels.')
     parser.add_argument('--dataset', type=str, default="cifar10", choices=['mnist', 'cifar10'],
                         help="dataset, choose from mnist, cifar10")
-    parser.add_argument('--method', type=str, default='free', choices=['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp'],
+    parser.add_argument('--method', type=str, default='free', choices=['free', 'nn', 'ga', 'pc', 'forward'],
                         help='method type. ga: gradient ascent. nn: non-negative. free: Theorem 1. pc: Ishida2017. forward: Yu2018.')
     parser.add_argument('--model', type=str, default='resnet', choices=['linear', 'mlp', 'resnet'], help='model name',)
     parser.add_argument('--epochs', default=300, type=int, help='number of epochs')
@@ -106,9 +113,9 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=int, default=1, help='random seed')
     parser.add_argument('--out_dir', type=str, default='./CLAT_result', help='dir of output')
     # for adv training
-    parser.add_argument('--epsilon', type=float, default=0.031, help='perturbation bound')
-    parser.add_argument('--num_steps', type=int, default=10, help='maximum perturbation step K')
-    parser.add_argument('--step_size', type=float, default=0.007, help='step size')
+    parser.add_argument('--epsilon', type=float, default=0.031, help='perturbation bound')  # 0.3
+    parser.add_argument('--num_steps', type=int, default=10, help='maximum perturbation step K')  # 40
+    parser.add_argument('--step_size', type=float, default=0.007, help='step size')  # 0.01
     parser.add_argument('--generate_cl_steps', type=int, default=100, help='maximum step for generating multiple complementary labels, if <=0, skip it.')
     parser.add_argument('--warmup_epochs', default=0, type=int, help='number of cl warmup epochs')
     args = parser.parse_args()
@@ -131,7 +138,7 @@ if __name__ == "__main__":
         os.makedirs(args.out_dir)
 
     full_train_loader, train_loader, test_loader, ordinary_train_dataset, test_dataset, K, input_dim = prepare_data(dataset=args.dataset, batch_size=args.batch_size)
-    ordinary_train_loader, complementary_train_loader, ccp, x_to_mcls = prepare_train_loaders(full_train_loader=full_train_loader, batch_size=args.batch_size, ordinary_train_dataset=ordinary_train_dataset)
+    ordinary_train_loader, complementary_train_loader, ccp, x_to_mcls, x_to_tls = prepare_train_loaders(full_train_loader=full_train_loader, batch_size=args.batch_size, ordinary_train_dataset=ordinary_train_dataset)
 
     if args.model == 'mlp':
         model = mlp_model(input_dim=input_dim, hidden_dim=500, output_dim=K)

@@ -45,7 +45,10 @@ def prepare_train_loaders(full_train_loader, batch_size, ordinary_train_dataset)
         K = torch.max(labels)+1  # K is number of classes, full_train_loader is full batch
         bs = labels.size(0)
     complementary_labels = generate_compl_labels(labels)
+    x_to_tls = {i: -1 for i in range(bs)}
     x_to_mcls = {i: set() for i in range(bs)}
+    for idx, tl in enumerate(labels.tolist()):
+        x_to_tls[idx] = tl
     for idx, cl in enumerate(complementary_labels.tolist()):
         x_to_mcls[idx].add(cl)
     ccp = class_prior(complementary_labels)
@@ -53,4 +56,4 @@ def prepare_train_loaders(full_train_loader, batch_size, ordinary_train_dataset)
     complementary_dataset = torch.utils.data.TensorDataset(data, torch.from_numpy(complementary_labels).long(), labels, id)
     ordinary_train_loader = torch.utils.data.DataLoader(dataset=ordinary_train_dataset, batch_size=batch_size, shuffle=True)
     complementary_train_loader = torch.utils.data.DataLoader(dataset=complementary_dataset, batch_size=batch_size, shuffle=True)
-    return ordinary_train_loader, complementary_train_loader, ccp, x_to_mcls
+    return ordinary_train_loader, complementary_train_loader, ccp, x_to_mcls, x_to_tls

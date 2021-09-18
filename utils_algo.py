@@ -33,10 +33,11 @@ def non_negative_loss(f, K, labels, ccp, beta):
     return final_loss, torch.mul(torch.from_numpy(count).float().to(device), loss_vector)
 
 
-def unbiased_risk_estimator(f, K, labels):
-    neglog = -F.log_softmax(f, dim=1)  # (bs, K)
-    loss = -(K-1) * neglog[torch.arange(labels.size(0)), labels.long()] + torch.sum(neglog, dim=1)
-    return torch.mean(loss)
+def mcls_loss():
+    """
+        unofficial implememtation of ICML-2020 "Learning with Multiple Complementary Labels"
+    """
+    pass
 
 
 def forward_loss(f, K, labels):
@@ -70,6 +71,12 @@ def accuracy_check(loader, model):
     return 100 * total / num_samples
 
 
+def unbiased_risk_estimator(f, K, labels):
+    neglog = -F.log_softmax(f, dim=1)  # (bs, K)
+    loss = -(K-1) * neglog[torch.arange(labels.size(0)), labels.long()] + torch.sum(neglog, dim=1)
+    return torch.mean(loss)
+
+
 def scl_exp(f, K, labels):
     bs = labels.size(0)
     final_loss = (K - 1) * torch.mean(torch.exp(f[torch.arange(bs), labels]))
@@ -89,6 +96,4 @@ def chosen_loss_c(f, K, labels, ccp, meta_method):
         final_loss = forward_loss(f=f, K=K, labels=labels)
     elif meta_method == 'pc':
         final_loss = pc_loss(f=f, K=K, labels=labels)
-    elif meta_method == "scl_exp":
-        final_loss = scl_exp(f=f, K=K, labels=labels)
     return final_loss, class_loss_torch
