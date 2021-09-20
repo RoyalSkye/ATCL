@@ -77,21 +77,13 @@ def adv_cl(model, data, target, true_labels, id, epsilon, step_size, num_steps, 
             else:
                 break
         iter_adv = Variable(iter_adv, requires_grad=False)
-        y_adv = torch.cat((y_adv, target))
-        y_adv = y_adv.view(-1, bs).transpose(0, 1)
-        # updata x_to_mcls
-        for i, y in enumerate(y_adv):
-            new_cls = torch.unique(y[1:]).tolist()
-            if -1 in new_cls: new_cls.remove(-1)
-            # remove the potential true labels
-            if y[1] in new_cls: new_cls.remove(y[1])
-            if y[-1] in new_cls: new_cls.remove(y[-1])
-            x_to_mcls[id[i].item()] = x_to_mcls[id[i].item()] | set(new_cls)
 
     # generate adversarial examples
     for k in range(num_steps):
         x_adv.requires_grad_()
         output = model(x_adv)
+        predict = torch.max(output.detach(), dim=1)[1]
+        if generate_cl_steps <= 0: y_adv = torch.cat((y_adv, predict))
         model.zero_grad()
         with torch.enable_grad():
             loss_adv, _ = chosen_loss_c(f=output, K=K, labels=target, ccp=ccp, meta_method=meta_method)
@@ -103,6 +95,16 @@ def adv_cl(model, data, target, true_labels, id, epsilon, step_size, num_steps, 
         x_adv = torch.min(torch.max(x_adv, data - epsilon), data + epsilon)
         x_adv = torch.clamp(x_adv, 0.0, 1.0)
     x_adv = Variable(x_adv, requires_grad=False)
+    y_adv = torch.cat((y_adv, target))
+    y_adv = y_adv.view(-1, bs).transpose(0, 1)
+    # updata x_to_mcls
+    for i, y in enumerate(y_adv):
+        new_cls = torch.unique(y[1:]).tolist()
+        if -1 in new_cls: new_cls.remove(-1)
+        # remove the potential true labels
+        if y[1] in new_cls: new_cls.remove(y[1])
+        if y[-1] in new_cls: new_cls.remove(y[-1])
+        x_to_mcls[id[i].item()] = x_to_mcls[id[i].item()] | set(new_cls)
     return x_adv, y_adv
 
 

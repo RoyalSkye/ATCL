@@ -33,18 +33,11 @@ def non_negative_loss(f, K, labels, ccp, beta):
     return final_loss, torch.mul(torch.from_numpy(count).float().to(device), loss_vector)
 
 
-def mcls_loss():
-    """
-        unofficial implememtation of ICML-2020 "Learning with Multiple Complementary Labels"
-    """
-    pass
-
-
 def forward_loss(f, K, labels):
-    Q = torch.ones(K,K) * 1/(K-1)
+    Q = torch.ones(K, K) * 1/(K-1)  # uniform assumption
     Q = Q.to(device)
     for k in range(K):
-        Q[k,k] = 0
+        Q[k, k] = 0
     q = torch.mm(F.softmax(f, 1), Q)
     return F.nll_loss(q.log(), labels.long())
 
@@ -81,6 +74,13 @@ def scl_exp(f, K, labels):
     bs = labels.size(0)
     final_loss = (K - 1) * torch.mean(torch.exp(f[torch.arange(bs), labels]))
     return final_loss
+
+
+def mcls_loss():
+    """
+        unofficial implememtation of ICML-2020 "Learning with Multiple Complementary Labels"
+    """
+    pass
 
 
 def chosen_loss_c(f, K, labels, ccp, meta_method):

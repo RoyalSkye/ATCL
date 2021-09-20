@@ -22,7 +22,7 @@ Specify the `model` argument:
 - `mlp`: Multi-layer perceptron with one hidden layer (500 units)
 - `resnet`: ResNet-34
 
-#### Results on CIFAR-10 (CL) - [Logs](https://drive.google.com/drive/folders/1EhzJDNdAbWm6yGQ8yev128leVsjXji3p?usp=sharing)
+#### Results - [Logs](https://drive.google.com/drive/folders/1EhzJDNdAbWm6yGQ8yev128leVsjXji3p?usp=sharing)
 
 > Settings: For CIFAR-10, ResNet-34 was used with weight decay of 5e−4 and initial learning rate of 1e−2. For optimization, SGD was used with the momentum set to 0.9. Learning rate was halved every 30 epochs. We train the model for 300 epochs with batch_size = 256.
 >
@@ -34,7 +34,7 @@ Specify the `model` argument:
 >
 > tensor([[2, 8, 8, 8, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ...])
 
-|             CL              | nature_test_acc (Last / Best) |
+|        CL - CIFAR10         | nature_test_acc (Last / Best) |
 | :-------------------------: | :---------------------------: |
 | ~~unbiased_risk_estimator~~ |        ~~9.29 / 26.2~~        |
 |      free (Ishida 19)       |         11.61 / 29.15         |
@@ -45,21 +45,45 @@ Specify the `model` argument:
 |       ~~modified_ga~~       |       ~~26.91 / 27.42~~       |
 |         ~~scl_exp~~         |       ~~10.00 / 10.00~~       |
 
+##### AT - MNIST
 
+> We avdersarially train a MLP/CNN for 100 epochs. 
+>
+> epsilon = 0.3, num_steps = 40, step_size = 0.01
+>
+> lr = 5e-5, weight_decay = 1e-4, optimizer = Adam
+>
+> CUDA_VISIBLE_DEVICES=0 nohup python -u main.py --method 'free' --dataset 'mnist' --generate_cl_steps 0 2>&1 &
 
-|           **AT**           | nature_test_acc |
-| :------------------------: | :-------------: |
-|  **CIFAR10 - ResNet-34**   |                 |
-|     adv_min_nn_max_nn      |        Failed        |
-|     adv_min_nn_min_ce      |        F        |
-|   adv_min_free_max_free    |        F        |
-|      min_ure_max_ure       |        F        |
-| warmup + min_free_max_free |       F+        |
-|  warmup + min_free_min_ce  |       F+        |
-|      **MNIST - MLP**       |                 |
-|     min_free_max_free      |      77.94      |
-| warmup + min_free_max_free |      87.86      |
-|  warmup + min_free_min_ce  |      88.34      |
+|                     Baseline                      |       | Natural Test Acc |     PGD20     |      CW      |
+| :-----------------------------------------------: | :---: | :--------------: | :-----------: | :----------: |
+|         (cnn_mnist/MLP) min_free_max_free         |       |        F         |               |              |
+|                   min_nn_max_nn                   |       |        F         |               |              |
+|                   min_ga_max_ga                   |       |        F         |               |              |
+|                   min_pc_max_pc                   |       |        F         |               |              |
+|              min_forward_max_forward              |       |        F         |               |              |
+|           progressive min_free_max_free           |       |  13.85 / 54.06   | 10.93 / 28.71 | 9.41 / 17.55 |
+|             progressive min_nn_max_nn             |       |   9.58 / 63.94   | 9.56 / 29.78  | 9.56 / 13.92 |
+|             progressive min_ga_max_ga             | ATCL2 |                  |               |              |
+|             progressive min_pc_max_pc             | ATCL3 |                  |               |              |
+|        progressive min_forward_max_forward        | ATCL  |                  |               |              |
+| **cnn_mnist** progressive min_forward_max_forward | ATCL1 |                  |               |              |
+
+##### AT - CIFAR10
+
+>
+
+|           Baseline            | Wrong CL (%) | Natural Test Acc | PGD20 |  CW  |
+| :---------------------------: | :----------: | :--------------: | :---: | :--: |
+|       min_free_max_free       |              |        F         |       |      |
+|         min_nn_max_nn         |              |        F         |       |      |
+|         min_ga_max_ga         |              |        F         |       |      |
+| progressive min_free_max_free |              |                  |       |      |
+|                               |              |                  |       |      |
+|                               |              |                  |       |      |
+|                               |              |                  |       |      |
+|                               |              |                  |       |      |
+|                               |              |                  |       |      |
 
 
 
