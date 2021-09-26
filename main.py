@@ -86,12 +86,14 @@ def adversarial_train(args, model, optimizer):
         }, os.path.join(args.out_dir, "checkpoint.pth.tar"))
 
     print(x_to_mcls)
+    print(nature_test_acc_list)
+    print(pgd20_acc_list)
     print(">> Finished Adv Training: PGD20 Test Acc | Last_checkpoint %.4f | Best_checkpoint %.4f |\n" % (test_pgd20_acc, best_pgd20_acc))
 
     # plot
     epoch = [i for i in range(args.epochs)]
     show([epoch, epoch], [nature_test_acc_list, pgd20_acc_list], label=["nature acc", "pgd20 acc"], title=args.dataset,
-         xdes="Epoch", ydes="Test Accuracy", path=os.path.join(args.out_dir, "test_acc.png"))
+         xdes="Epoch", ydes="Test Accuracy", path=os.path.join(args.out_dir, "adv_test_acc.png"))
 
     # eval using CW Attack
     model.eval()
@@ -105,7 +107,7 @@ def adversarial_train(args, model, optimizer):
 
 
 def complementary_learning(args, model, optimizer):
-    lr = args.lr
+    lr, train_acc_list, test_acc_list = args.lr, [], []
     save_table = np.zeros(shape=(args.warmup_epochs, 3))
     for epoch in range(args.warmup_epochs):
         lr = lr_schedule(lr, epoch + 1)
@@ -132,9 +134,16 @@ def complementary_learning(args, model, optimizer):
             optimizer.step()
         train_accuracy = accuracy_check(loader=train_loader, model=model)
         test_accuracy = accuracy_check(loader=test_loader, model=model)
+        train_acc_list.append(train_accuracy)
+        test_acc_list.append(test_accuracy)
         print('Epoch: {}. Tr Acc: {}. Te Acc: {}.'.format(epoch + 1, train_accuracy, test_accuracy))
         save_table[epoch, :] = epoch + 1, train_accuracy, test_accuracy
 
+    # plot
+    print(">> Best test acc: {}".format(max(test_acc_list)))
+    epoch = [i for i in range(args.warmup_epochs)]
+    show([epoch, epoch], [train_acc_list, test_acc_list], label=["train set acc", "test set acc"], title=args.dataset,
+         xdes="Epoch", ydes="Accuracy", path=os.path.join(args.out_dir, "cl_acc.png"))
     np.savetxt(args.method + '_results.txt', save_table, delimiter=',', fmt='%1.3f')
 
 
@@ -144,15 +153,28 @@ def lr_schedule(lr, epoch):
     return lr
 
 
+def accuracy_check(loader, model):
+    sm = F.softmax
+    total, num_samples = 0, 0
+    for images, labels in loader:
+        labels, images = labels.to(device), images.to(device)
+        outputs = model(images)
+        sm_outputs = sm(outputs, dim=1)
+        _, predicted = torch.max(sm_outputs.data, 1)
+        total += (predicted == labels).sum().item()
+        num_samples += labels.size(0)
+    return 100 * total / num_samples
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Adversarial Training with Complementary Labels')
     parser.add_argument('--lr', type=float, default=1e-2, help='optimizer\'s learning rate', )
     parser.add_argument('--batch_size', type=int, default=256, help='batch_size of ordinary labels.')
     parser.add_argument('--dataset', type=str, default="cifar10", choices=['mnist', 'cifar10'],
                         help="dataset, choose from mnist, cifar10")
-    parser.add_argument('--method', type=str, default='free', choices=['free', 'nn', 'ga', 'pc', 'forward'],
+    parser.add_argument('--method', type=str, default='free', choices=['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp', 'scl_nl'],
                         help='method type. ga: gradient ascent. nn: non-negative. free: Theorem 1. pc: Ishida2017. forward: Yu2018.')
-    parser.add_argument('--model', type=str, default='resnet', choices=['linear', 'mlp', 'cnn_mnist', 'resnet'], help='model name',)
+    parser.add_argument('--model', type=str, default='resnet34', choices=['linear', 'mlp', 'cnn', 'resnet18', 'resnet34', 'densenet', 'wrn'], help='model name')
     parser.add_argument('--epochs', default=300, type=int, help='number of epochs')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='weight decay')
     parser.add_argument('--momentum', type=float, default=0.9, help='SGD momentum')
@@ -162,7 +184,7 @@ if __name__ == "__main__":
     parser.add_argument('--epsilon', type=float, default=0.031, help='perturbation bound')
     parser.add_argument('--num_steps', type=int, default=10, help='maximum perturbation step K')
     parser.add_argument('--step_size', type=float, default=0.007, help='step size')
-    parser.add_argument('--generate_cl_steps', type=int, default=100, help='maximum step for generating multiple complementary labels, if <=0, skip it.')
+    parser.add_argument('--generate_cl_steps', type=int, default=0, help='maximum step for generating multiple complementary labels, if <=0, skip it.')
     parser.add_argument('--warmup_epochs', default=0, type=int, help='number of cl warmup epochs')
     parser.add_argument('--progressive', action='store_true', help="progressively increase the num_steps of PGD, default: False")
     args = parser.parse_args()
@@ -185,18 +207,26 @@ if __name__ == "__main__":
     if not os.path.exists(args.out_dir):
         os.makedirs(args.out_dir)
 
-    full_train_loader, train_loader, test_loader, ordinary_train_dataset, test_dataset, K, input_dim = prepare_data(dataset=args.dataset, batch_size=args.batch_size)
+    full_train_loader, train_loader, test_loader, ordinary_train_dataset, test_dataset, K, input_dim, input_channel = prepare_data(dataset=args.dataset, batch_size=args.batch_size)
     ordinary_train_loader, complementary_train_loader, ccp, x_to_mcls, x_to_tls = prepare_train_loaders(full_train_loader=full_train_loader, batch_size=args.batch_size, ordinary_train_dataset=ordinary_train_dataset)
 
     if args.model == 'mlp':
         model = mlp_model(input_dim=input_dim, hidden_dim=500, output_dim=K)
     elif args.model == 'linear':
         model = linear_model(input_dim=input_dim, output_dim=K)
-    elif args.model == 'cnn_mnist':
-        model = cnn_mnist(num_classes=K)
-    elif args.model == 'resnet':
-        model = ResNet34(num_classes=K)
+    elif args.model == 'cnn':
+        model = cnn(input_channel=input_channel, num_classes=K)
+    elif args.model == 'resnet18':
+        model = ResNet18(input_channel=input_channel, num_classes=K)
+    elif args.model == 'resnet34':
+        model = ResNet34(input_channel=input_channel, num_classes=K)
+    elif args.model == 'densenet':
+        model = densenet(input_channel=input_channel, num_classes=K)
+    elif args.model == "wrn":
+        model = Wide_ResNet_Madry(depth=32, num_classes=K, widen_factor=10, dropRate=0.0)  # WRN-32-10
 
+    print(args.model)
+    display_num_param(model)
     model = model.to(device)
     model = torch.nn.DataParallel(model)
 
@@ -211,6 +241,8 @@ if __name__ == "__main__":
 
     # complementary learning, ref to "Complementary-label learning for arbitrary losses and models"
     if args.warmup_epochs > 0:
+        print(">> Learning with Complementary Labels")
         complementary_learning(args, model, optimizer)
-
-    adversarial_train(args, model, optimizer)
+    if args.epochs > 0:
+        print(">> Adversarial learning with Complementary Labels")
+        adversarial_train(args, model, optimizer)

@@ -51,42 +51,34 @@ def pc_loss(f, K, labels):
     return pc_loss
 
 
-def accuracy_check(loader, model):
-    sm = F.softmax
-    total, num_samples = 0, 0
-    for images, labels in loader:
-        labels, images = labels.to(device), images.to(device)
-        outputs = model(images)
-        sm_outputs = sm(outputs, dim=1)
-        _, predicted = torch.max(sm_outputs.data, 1)
-        total += (predicted == labels).sum().item()
-        num_samples += labels.size(0)
-    return 100 * total / num_samples
-
-
-def unbiased_risk_estimator(f, K, labels):
-    neglog = -F.log_softmax(f, dim=1)  # (bs, K)
-    loss = -(K-1) * neglog[torch.arange(labels.size(0)), labels.long()] + torch.sum(neglog, dim=1)
-    return torch.mean(loss)
-
-
-def scl_exp(f, K, labels):
-    bs = labels.size(0)
-    final_loss = (K - 1) * torch.mean(torch.exp(f[torch.arange(bs), labels]))
-    return final_loss
-
-
-def mcls_loss():
+def phi_loss(phi, logits, target):
     """
-        unofficial implememtation of ICML-2020 "Learning with Multiple Complementary Labels"
+        Official implementation of "Unbiased Risk Estimators Can Mislead: A Case Study of Learning with Complementary Labels"
+        by Yu-Ting Chou
     """
-    pass
+    if phi == 'lin':
+        activated_prob = F.softmax(logits, dim=1)
+    elif phi == 'quad':
+        activated_prob = torch.pow(F.softmax(logits, dim=1), 2)
+    elif phi == 'exp':
+        activated_prob = torch.exp(F.softmax(logits, dim=1))
+    elif phi == 'log':
+        activated_prob = torch.log(F.softmax(logits, dim=1))
+    elif phi == 'nl':
+        activated_prob = -torch.log(1 - F.softmax(logits, dim=1) + 1e-5)
+    elif phi == 'hinge':
+        activated_prob = F.softmax(logits, dim=1) - (1 / 10)
+        activated_prob[activated_prob < 0] = 0
+    else:
+        raise ValueError('Invalid phi function')
+
+    loss = -F.nll_loss(activated_prob, target)
+    return loss
 
 
 def chosen_loss_c(f, K, labels, ccp, meta_method):
     class_loss_torch = None
     if meta_method == 'free':
-        # final_loss = unbiased_risk_estimator(f, K, labels)
         final_loss, class_loss_torch = assump_free_loss(f=f, K=K, labels=labels, ccp=ccp)
     elif meta_method == 'ga':
         final_loss, class_loss_torch = assump_free_loss(f=f, K=K, labels=labels, ccp=ccp)
@@ -96,4 +88,6 @@ def chosen_loss_c(f, K, labels, ccp, meta_method):
         final_loss = forward_loss(f=f, K=K, labels=labels)
     elif meta_method == 'pc':
         final_loss = pc_loss(f=f, K=K, labels=labels)
+    elif meta_method[:3] == "scl":
+        final_loss = phi_loss(meta_method[4:], f, labels)
     return final_loss, class_loss_torch

@@ -26,3 +26,10 @@ def show(x, y, label, title, xdes, ydes, path, x_scale="linear", dpi=150):
     plt.grid(True)
     plt.savefig(path, dpi=dpi, bbox_inches='tight', pad_inches=0)
     plt.close("all")
+
+
+def display_num_param(net):
+    nb_param = 0
+    for param in net.parameters():
+        nb_param += param.numel()
+    print('There are {} ({:.2f} million) parameters in this neural network'.format(nb_param, nb_param/1e6))

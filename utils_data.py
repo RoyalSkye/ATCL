@@ -28,16 +28,16 @@ def prepare_data(dataset, batch_size):
     if dataset == "mnist":
         ordinary_train_dataset = dsets.MNIST(root='./data/MNIST', train=True, transform=transforms.ToTensor(), download=True)
         test_dataset = dsets.MNIST(root='./data/MNIST', train=False, transform=transforms.ToTensor())
-        input_dim = 28 * 28
+        input_dim, input_channel = 28 * 28, 1
     elif dataset == "cifar10":
         ordinary_train_dataset = dsets.CIFAR10(root='./data/CIFAR10', train=True, transform=transforms.ToTensor(), download=True)
         test_dataset = dsets.CIFAR10(root='./data/CIFAR10', train=False, transform=transforms.ToTensor())
-        input_dim = 3 * 32 * 32
+        input_dim, input_channel = 3 * 32 * 32, 3
     train_loader = torch.utils.data.DataLoader(dataset=ordinary_train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
     full_train_loader = torch.utils.data.DataLoader(dataset=ordinary_train_dataset, batch_size=len(ordinary_train_dataset.data), shuffle=True)
     num_classes = len(ordinary_train_dataset.classes)
-    return full_train_loader, train_loader, test_loader, ordinary_train_dataset, test_dataset, num_classes, input_dim
+    return full_train_loader, train_loader, test_loader, ordinary_train_dataset, test_dataset, num_classes, input_dim, input_channel
 
 
 def prepare_train_loaders(full_train_loader, batch_size, ordinary_train_dataset):
