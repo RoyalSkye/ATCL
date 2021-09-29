@@ -33,3 +33,17 @@ def display_num_param(net):
     for param in net.parameters():
         nb_param += param.numel()
     print('There are {} ({:.2f} million) parameters in this neural network'.format(nb_param, nb_param/1e6))
+
+
+def stat(x_to_mcls, x_to_tls):
+    # test how many data are given wrong cls
+    wrong_cl_count, correct_cl_count = 0, 0
+    for k, v in x_to_mcls.items():
+        correct_cl_count += len(v)
+        if x_to_tls[k] in v:
+            wrong_cl_count += 1
+    # test how many correct cls are given to each data
+    correct_cl_count -= wrong_cl_count
+
+    return wrong_cl_count/len(x_to_mcls), correct_cl_count/len(x_to_mcls)
+

@@ -8,11 +8,29 @@ import torchvision
 
 
 def adversarial_train(args, model, optimizer):
+    if args.baseline == "two_stage":
+        cl_model = torch.nn.DataParallel(create_model(args, input_dim, input_channel, K).to(device))
+        checkpoint = torch.load(os.path.join(args.out_dir, "cl_best_checkpoint.pth.tar"))
+        cl_model.load_state_dict(checkpoint['state_dict'])
+        print(">> Load the best CL model with test acc: {}, epoch {}".format(checkpoint['test_acc'], checkpoint['epoch']))
     lr, best_pgd20_acc, nature_test_acc_list, pgd20_acc_list = args.lr, 0, [], []
     for epoch in range(args.epochs):
         lr = lr_schedule(lr, epoch + 1)
         optimizer.param_groups[0].update(lr=lr)
         for batch_idx, (images, cl_labels, true_labels, id) in enumerate(complementary_train_loader):
+            # for two-stage baseline
+            if args.baseline == "two_stage":
+                pseudo_labels = get_pred(cl_model, images.detach())
+                images, pseudo_labels = images.to(device), pseudo_labels.to(device)
+                x_adv = pgd(model, images, pseudo_labels, args.epsilon, args.step_size, args.num_steps, loss_fn="cent", category="Madry", rand_init=True, num_classes=K)
+                model.train()
+                optimizer.zero_grad()
+                logit = model(x_adv)
+                loss = nn.CrossEntropyLoss(reduction="mean")(logit, pseudo_labels)
+                loss.backward()
+                optimizer.step()
+                continue
+
             random_cl_labels = []
             for i in id:
                 mcls = x_to_mcls[i.item()]
@@ -22,8 +40,9 @@ def adversarial_train(args, model, optimizer):
             images, cl_labels, true_labels = images.to(device), cl_labels.to(device), true_labels.to(device)
 
             # Get adversarial data
-            num_steps = math.ceil((epoch+1) / args.epochs * args.num_steps) if args.progressive else args.num_steps
-            x_adv, y_adv = adv_cl(model, images, cl_labels, true_labels, id, args.epsilon, args.step_size, num_steps, K, ccp, x_to_mcls,
+            # num_steps = math.ceil((epoch+1) / args.epochs * args.num_steps) if args.progressive else args.num_steps
+            epsilon = (epoch+1) / args.epochs * args.epsilon if args.progressive else args.epsilon
+            x_adv, y_adv = adv_cl(model, images, cl_labels, true_labels, id, epsilon, args.step_size, args.num_steps, K, ccp, x_to_mcls,
                                   generate_cl_steps=args.generate_cl_steps, meta_method=args.method, category="Madry", rand_init=True)
             model.train()
             optimizer.zero_grad()
@@ -51,11 +70,9 @@ def adversarial_train(args, model, optimizer):
                 print(y_adv)
                 print()
 
-        # test how many data are given wrong cls
-        count = 0
-        for k, v in x_to_mcls.items():
-            if x_to_tls[k] in v: count += 1
-        print("Epoch {}: {}/{}={}% data are given wrong complementary labels!".format(epoch+1, count, len(x_to_mcls), 100*count/len(x_to_mcls)))
+        # stat
+        wrong_count, correct_count = stat(x_to_mcls, x_to_tls)
+        print("Epoch {}: {}% data are given wrong complementary labels, and each data are given {} correct complementary labels on average!".format(epoch + 1, wrong_count * 100, correct_count))
 
         # Evalutions
         test_nat_acc = accuracy_check(loader=test_loader, model=model)
@@ -107,7 +124,7 @@ def adversarial_train(args, model, optimizer):
 
 
 def complementary_learning(args, model, optimizer):
-    lr, train_acc_list, test_acc_list = args.lr, [], []
+    lr, best_acc, train_acc_list, test_acc_list = args.lr, 0, [], []
     save_table = np.zeros(shape=(args.warmup_epochs, 3))
     for epoch in range(args.warmup_epochs):
         lr = lr_schedule(lr, epoch + 1)
@@ -139,6 +156,16 @@ def complementary_learning(args, model, optimizer):
         print('Epoch: {}. Tr Acc: {}. Te Acc: {}.'.format(epoch + 1, train_accuracy, test_accuracy))
         save_table[epoch, :] = epoch + 1, train_accuracy, test_accuracy
 
+        # Save the best checkpoint
+        if test_accuracy > best_acc:
+            best_acc = test_accuracy
+            torch.save({
+                'epoch': epoch + 1,
+                'state_dict': model.state_dict(),
+                'test_acc': test_accuracy,
+                'optimizer': optimizer.state_dict(),
+            }, os.path.join(args.out_dir, "cl_best_checkpoint.pth.tar"))
+
     # plot
     print(">> Best test acc: {}".format(max(test_acc_list)))
     epoch = [i for i in range(args.warmup_epochs)]
@@ -166,6 +193,35 @@ def accuracy_check(loader, model):
     return 100 * total / num_samples
 
 
+def create_model(args, input_dim, input_channel, K):
+    if args.model == 'mlp':
+        model = mlp_model(input_dim=input_dim, hidden_dim=500, output_dim=K)
+    elif args.model == 'linear':
+        model = linear_model(input_dim=input_dim, output_dim=K)
+    elif args.model == 'cnn':
+        model = cnn(input_channel=input_channel, num_classes=K)
+    elif args.model == 'resnet18':
+        model = ResNet18(input_channel=input_channel, num_classes=K)
+    elif args.model == 'resnet34':
+        model = ResNet34(input_channel=input_channel, num_classes=K)
+    elif args.model == 'densenet':
+        model = densenet(input_channel=input_channel, num_classes=K)
+    elif args.model == "wrn":
+        model = Wide_ResNet_Madry(depth=32, num_classes=K, widen_factor=10, dropRate=0.0)  # WRN-32-10
+
+    return model
+
+
+def get_pred(cl_model, data):
+    cl_model.eval()
+    with torch.no_grad():
+        data = data.to(device)
+        outputs = cl_model(data)
+        _, predicted = torch.max(outputs, 1)
+
+    return predicted
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Adversarial Training with Complementary Labels')
     parser.add_argument('--lr', type=float, default=1e-2, help='optimizer\'s learning rate', )
@@ -175,6 +231,7 @@ if __name__ == "__main__":
     parser.add_argument('--method', type=str, default='free', choices=['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp', 'scl_nl'],
                         help='method type. ga: gradient ascent. nn: non-negative. free: Theorem 1. pc: Ishida2017. forward: Yu2018.')
     parser.add_argument('--model', type=str, default='resnet34', choices=['linear', 'mlp', 'cnn', 'resnet18', 'resnet34', 'densenet', 'wrn'], help='model name')
+    parser.add_argument('--baseline', type=str, default='one_stage', choices=['one_stage', 'two_stage'], help='baseline methods')
     parser.add_argument('--epochs', default=300, type=int, help='number of epochs')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='weight decay')
     parser.add_argument('--momentum', type=float, default=0.9, help='SGD momentum')
@@ -186,7 +243,7 @@ if __name__ == "__main__":
     parser.add_argument('--step_size', type=float, default=0.007, help='step size')
     parser.add_argument('--generate_cl_steps', type=int, default=0, help='maximum step for generating multiple complementary labels, if <=0, skip it.')
     parser.add_argument('--warmup_epochs', default=0, type=int, help='number of cl warmup epochs')
-    parser.add_argument('--progressive', action='store_true', help="progressively increase the num_steps of PGD, default: False")
+    parser.add_argument('--progressive', action='store_true', help="progressively increase the num_steps/epsilon of PGD, default: False")
     args = parser.parse_args()
 
     # To be removed
@@ -210,30 +267,16 @@ if __name__ == "__main__":
     full_train_loader, train_loader, test_loader, ordinary_train_dataset, test_dataset, K, input_dim, input_channel = prepare_data(dataset=args.dataset, batch_size=args.batch_size)
     ordinary_train_loader, complementary_train_loader, ccp, x_to_mcls, x_to_tls = prepare_train_loaders(full_train_loader=full_train_loader, batch_size=args.batch_size, ordinary_train_dataset=ordinary_train_dataset)
 
-    if args.model == 'mlp':
-        model = mlp_model(input_dim=input_dim, hidden_dim=500, output_dim=K)
-    elif args.model == 'linear':
-        model = linear_model(input_dim=input_dim, output_dim=K)
-    elif args.model == 'cnn':
-        model = cnn(input_channel=input_channel, num_classes=K)
-    elif args.model == 'resnet18':
-        model = ResNet18(input_channel=input_channel, num_classes=K)
-    elif args.model == 'resnet34':
-        model = ResNet34(input_channel=input_channel, num_classes=K)
-    elif args.model == 'densenet':
-        model = densenet(input_channel=input_channel, num_classes=K)
-    elif args.model == "wrn":
-        model = Wide_ResNet_Madry(depth=32, num_classes=K, widen_factor=10, dropRate=0.0)  # WRN-32-10
-
+    model = create_model(args, input_dim, input_channel, K)
     print(args.model)
     display_num_param(model)
     model = model.to(device)
     model = torch.nn.DataParallel(model)
 
     if args.dataset == "mnist":
-        optimizer = torch.optim.Adam(model.parameters(), weight_decay=args.weight_decay, lr=args.lr)
+        optimizer1 = torch.optim.Adam(model.parameters(), weight_decay=args.weight_decay, lr=args.lr)
     elif args.dataset == "cifar10":
-        optimizer = torch.optim.SGD(model.parameters(), weight_decay=args.weight_decay, lr=args.lr, momentum=args.momentum)
+        optimizer1 = torch.optim.SGD(model.parameters(), weight_decay=args.weight_decay, lr=args.lr, momentum=args.momentum)
 
     train_accuracy = accuracy_check(loader=train_loader, model=model)
     test_accuracy = accuracy_check(loader=test_loader, model=model)
@@ -242,7 +285,15 @@ if __name__ == "__main__":
     # complementary learning, ref to "Complementary-label learning for arbitrary losses and models"
     if args.warmup_epochs > 0:
         print(">> Learning with Complementary Labels")
-        complementary_learning(args, model, optimizer)
+        complementary_learning(args, model, optimizer1)
+
+    # for two_stage baseline
+    adv_model = torch.nn.DataParallel(create_model(args, input_dim, input_channel, K).to(device)) if args.baseline == "two_stage" else model
+    if args.dataset == "mnist":
+        optimizer2 = torch.optim.Adam(adv_model.parameters(), weight_decay=args.weight_decay, lr=args.lr) if args.baseline == "two_stage" else optimizer1
+    elif args.dataset == "cifar10":
+        optimizer2 = torch.optim.SGD(adv_model.parameters(), weight_decay=args.weight_decay, lr=args.lr, momentum=args.momentum) if args.baseline == "two_stage" else optimizer1
+
     if args.epochs > 0:
         print(">> Adversarial learning with Complementary Labels")
-        adversarial_train(args, model, optimizer)
+        adversarial_train(args, adv_model, optimizer2)

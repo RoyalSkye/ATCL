@@ -26,10 +26,6 @@ def adv_cl(model, data, target, true_labels, id, epsilon, step_size, num_steps, 
         min---max \bar{l}(\bar{y}, g(x))
            |--min cross-entropy(\bar{y}, g(x)) -> mcls
     """
-    # TODO: 1. how to discriminate between new_cls and true_labels, it's possible that new_cls == true_labels, e.g. prob margin
-    #  2. how to use the new (m)cls - "learning with mcls"
-    #  3. For CIFAR10, PGD num_steps can gradually increase to avoid failing
-    #  4. Co-teaching e.g., two models with different losses to generate mcls / gradient ascent
     model.eval()
     y_adv, bs = true_labels, true_labels.size(0)
     if category == "trades":
@@ -38,7 +34,7 @@ def adv_cl(model, data, target, true_labels, id, epsilon, step_size, num_steps, 
         x_adv = data.detach() + torch.from_numpy(np.random.uniform(-epsilon, epsilon, data.shape)).float().to(device) if rand_init else data.detach()
         x_adv = torch.clamp(x_adv, 0.0, 1.0)
 
-    # generate multiple complementary labels friendly: for each datapoint, stop when predict = (cl) target
+    # min: generate multiple complementary labels friendly: for each datapoint, stop when predict = (cl) target
     if generate_cl_steps > 0:
         iter_adv = x_adv.clone().detach()
         iter_target = target.clone().detach()
@@ -72,7 +68,8 @@ def adv_cl(model, data, target, true_labels, id, epsilon, step_size, num_steps, 
                 iter_target = iter_target[iter_index]
                 grad = grad[iter_index]
                 eta = step_size * grad.sign()
-                iter_adv = iter_adv.detach() - eta + 0.001 * torch.randn(iter_adv.shape).detach().to(device)
+                # iter_adv = iter_adv.detach() - eta + 0.001 * torch.randn(iter_adv.shape).detach().to(device)
+                iter_adv = iter_adv.detach() - eta
                 iter_adv = torch.clamp(iter_adv, 0.0, 1.0)
             else:
                 break
@@ -111,10 +108,10 @@ def adv_cl(model, data, target, true_labels, id, epsilon, step_size, num_steps, 
 def pgd(model, data, target, epsilon, step_size, num_steps, loss_fn, category, rand_init, num_classes=10):
     model.eval()
     if category == "trades":
-        x_adv = data.detach() + 0.001 * torch.randn(data.shape).cuda().detach() if rand_init else data.detach()
+        x_adv = data.detach() + 0.001 * torch.randn(data.shape).to(device).detach() if rand_init else data.detach()
         nat_output = model(data)
     if category == "Madry":
-        x_adv = data.detach() + torch.from_numpy(np.random.uniform(-epsilon, epsilon, data.shape)).float().cuda() if rand_init else data.detach()
+        x_adv = data.detach() + torch.from_numpy(np.random.uniform(-epsilon, epsilon, data.shape)).float().to(device) if rand_init else data.detach()
         x_adv = torch.clamp(x_adv, 0.0, 1.0)
     for k in range(num_steps):
         x_adv.requires_grad_()
