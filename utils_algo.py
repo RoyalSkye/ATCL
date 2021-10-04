@@ -76,6 +76,18 @@ def phi_loss(phi, logits, target):
     return loss
 
 
+def weighted_mcl_loss(logits, x_to_mcls, id):
+    total_loss = 0
+    activated_prob = torch.exp(F.softmax(logits, dim=1))
+    for i, idx in enumerate(id):
+        mcls = x_to_mcls[idx.item()]
+        for cl in mcls:
+            cl = torch.LongTensor([cl]).to(device)
+            total_loss += -F.nll_loss(activated_prob[i].unsqueeze(0), cl) * 1/len(mcls)
+
+    return total_loss
+
+
 def chosen_loss_c(f, K, labels, ccp, meta_method):
     class_loss_torch = None
     if meta_method == 'free':

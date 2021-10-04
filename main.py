@@ -8,12 +8,13 @@ import torchvision
 
 
 def adversarial_train(args, model, optimizer):
+    lr, cl_model, best_pgd20_acc, nature_test_acc_list, pgd20_acc_list = args.lr, None, 0, [], []
     if args.baseline == "two_stage":
         cl_model = torch.nn.DataParallel(create_model(args, input_dim, input_channel, K).to(device))
         checkpoint = torch.load(os.path.join(args.out_dir, "cl_best_checkpoint.pth.tar"))
         cl_model.load_state_dict(checkpoint['state_dict'])
+        cl_model.eval()
         print(">> Load the best CL model with test acc: {}, epoch {}".format(checkpoint['test_acc'], checkpoint['epoch']))
-    lr, best_pgd20_acc, nature_test_acc_list, pgd20_acc_list = args.lr, 0, [], []
     for epoch in range(args.epochs):
         lr = lr_schedule(lr, epoch + 1)
         optimizer.param_groups[0].update(lr=lr)
@@ -42,12 +43,13 @@ def adversarial_train(args, model, optimizer):
             # Get adversarial data
             # num_steps = math.ceil((epoch+1) / args.epochs * args.num_steps) if args.progressive else args.num_steps
             epsilon = (epoch+1) / args.epochs * args.epsilon if args.progressive else args.epsilon
-            x_adv, y_adv = adv_cl(model, images, cl_labels, true_labels, id, epsilon, args.step_size, args.num_steps, K, ccp, x_to_mcls,
+            x_adv, y_adv = adv_cl(model, cl_model, images, cl_labels, true_labels, id, epsilon, args.step_size, args.num_steps, K, ccp, x_to_mcls,
                                   generate_cl_steps=args.generate_cl_steps, meta_method=args.method, category="Madry", rand_init=True)
             model.train()
             optimizer.zero_grad()
             logit = model(x_adv)
             loss, loss_vector = chosen_loss_c(f=logit, K=K, labels=cl_labels, ccp=ccp, meta_method=args.method)
+            # loss = weighted_mcl_loss(logit, x_to_mcls, id)
             if args.method == 'ga':
                 if torch.min(loss_vector).item() < 0:
                     loss_vector_with_zeros = torch.cat(

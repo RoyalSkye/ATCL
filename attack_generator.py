@@ -21,7 +21,7 @@ def cwloss(output, target, confidence=50, num_classes=10):
     return loss
 
 
-def adv_cl(model, data, target, true_labels, id, epsilon, step_size, num_steps, K, ccp, x_to_mcls, generate_cl_steps=100, meta_method="nn", category="Madry", rand_init=True):
+def adv_cl(model, cl_model, data, target, true_labels, id, epsilon, step_size, num_steps, K, ccp, x_to_mcls, generate_cl_steps=100, meta_method="nn", category="Madry", rand_init=True):
     """
         min---max \bar{l}(\bar{y}, g(x))
            |--min cross-entropy(\bar{y}, g(x)) -> mcls
@@ -85,6 +85,7 @@ def adv_cl(model, data, target, true_labels, id, epsilon, step_size, num_steps, 
         with torch.enable_grad():
             loss_adv, _ = chosen_loss_c(f=output, K=K, labels=target, ccp=ccp, meta_method=meta_method)
             # loss_adv = nn.CrossEntropyLoss(reduction="mean")(output, target)
+            # loss_adv = weighted_mcl_loss(output, x_to_mcls, id)
         loss_adv.backward()
         eta = step_size * x_adv.grad.sign()
         # Update adversarial data
