@@ -1,13 +1,14 @@
 import argparse, time, os, random, math
 from utils_data import *
 from utils_algo import *
+from utils_mcl_loss import *
 from models import *
 from attack_generator import *
 from utils_func import *
 import torchvision
 
 
-def adversarial_train(args, model, optimizer):
+def adversarial_train(args, model, optimizer, partialY):
     lr, cl_model, best_pgd20_acc, nature_test_acc_list, pgd20_acc_list = args.lr, None, 0, [], []
     if args.baseline == "two_stage":
         cl_model = torch.nn.DataParallel(create_model(args, input_dim, input_channel, K).to(device))
@@ -32,24 +33,27 @@ def adversarial_train(args, model, optimizer):
                 optimizer.step()
                 continue
 
-            random_cl_labels = []
-            for i in id:
-                mcls = x_to_mcls[i.item()]
-                cl = list(mcls)[0] if len(mcls) == 1 else random.sample(mcls, 1)[0]
-                random_cl_labels.append(cl)
-            random_cl_labels = torch.LongTensor(random_cl_labels).to(device)
+            # random_cl_labels = []
+            # for i in id:
+            #     mcls = x_to_mcls[i.item()]
+            #     cl = list(mcls)[0] if len(mcls) == 1 else random.sample(mcls, 1)[0]
+            #     random_cl_labels.append(cl)
+            # random_cl_labels = torch.LongTensor(random_cl_labels).to(device)
             images, cl_labels, true_labels = images.to(device), cl_labels.to(device), true_labels.to(device)
 
             # Get adversarial data
             # num_steps = math.ceil((epoch+1) / args.epochs * args.num_steps) if args.progressive else args.num_steps
             epsilon = (epoch+1) / args.epochs * args.epsilon if args.progressive else args.epsilon
-            x_adv, y_adv = adv_cl(model, cl_model, images, cl_labels, true_labels, id, epsilon, args.step_size, args.num_steps, K, ccp, x_to_mcls,
+            x_adv, y_adv, partialY = adv_cl(model, images, cl_labels, pseudo_labels, true_labels, id, epsilon, args.step_size, args.num_steps, K, ccp, x_to_mcls, partialY,
                                   generate_cl_steps=args.generate_cl_steps, meta_method=args.method, category="Madry", rand_init=True)
             model.train()
             optimizer.zero_grad()
             logit = model(x_adv)
-            loss, loss_vector = chosen_loss_c(f=logit, K=K, labels=cl_labels, ccp=ccp, meta_method=args.method)
-            # loss = weighted_mcl_loss(logit, x_to_mcls, id)
+
+            # cl_w = weight_update(cl_w, logit.detach(), id)
+            # loss, loss_vector = chosen_loss_c(f=logit, K=K, labels=cl_labels, ccp=ccp, meta_method=args.method)
+            # loss, loss_vector = weighted_mcl_loss(logit, cl_w[id], ccp, args.method)
+            loss = exp_loss(logit, partialY[id].float())
             if args.method == 'ga':
                 if torch.min(loss_vector).item() < 0:
                     loss_vector_with_zeros = torch.cat(
@@ -68,8 +72,8 @@ def adversarial_train(args, model, optimizer):
 
             if batch_idx == 0:
                 torchvision.utils.save_image(x_adv, os.path.join(args.out_dir, "x_adv_epoch_{}.jpg".format(epoch+1)))
-                torch.set_printoptions(threshold=30000)
-                print(y_adv)
+                torch.set_printoptions(threshold=600000)
+                # print(y_adv)
                 print()
 
         # stat
@@ -104,7 +108,6 @@ def adversarial_train(args, model, optimizer):
             'optimizer': optimizer.state_dict(),
         }, os.path.join(args.out_dir, "checkpoint.pth.tar"))
 
-    print(x_to_mcls)
     print(nature_test_acc_list)
     print(pgd20_acc_list)
     print(">> Finished Adv Training: PGD20 Test Acc | Last_checkpoint %.4f | Best_checkpoint %.4f |\n" % (test_pgd20_acc, best_pgd20_acc))
@@ -125,9 +128,8 @@ def adversarial_train(args, model, optimizer):
     print(">> EVAL: CW Test Acc | Last_checkpoint %.4f | Best_checkpoint(%.1f) %.4f |\n" % (last_cw_acc, best_checkpoint['epoch'], best_cw_acc))
 
 
-def complementary_learning(args, model, optimizer):
+def complementary_learning(args, model, optimizer, partialY):
     lr, best_acc, train_acc_list, test_acc_list = args.lr, 0, [], []
-    save_table = np.zeros(shape=(args.warmup_epochs, 3))
     for epoch in range(args.warmup_epochs):
         lr = lr_schedule(lr, epoch + 1)
         optimizer.param_groups[0].update(lr=lr)
@@ -135,7 +137,8 @@ def complementary_learning(args, model, optimizer):
             images, cl_labels, true_labels = images.to(device), cl_labels.to(device), true_labels.to(device)
             optimizer.zero_grad()
             outputs = model(images)
-            loss, loss_vector = chosen_loss_c(f=outputs, K=K, labels=cl_labels, ccp=ccp, meta_method=args.method)
+            # loss, loss_vector = chosen_loss_c(f=outputs, K=K, labels=cl_labels, ccp=ccp, meta_method=args.method)
+            loss = exp_loss(outputs, partialY[id].float())
             if args.method == 'ga':
                 if torch.min(loss_vector).item() < 0:
                     loss_vector_with_zeros = torch.cat(
@@ -156,7 +159,6 @@ def complementary_learning(args, model, optimizer):
         train_acc_list.append(train_accuracy)
         test_acc_list.append(test_accuracy)
         print('Epoch: {}. Tr Acc: {}. Te Acc: {}.'.format(epoch + 1, train_accuracy, test_accuracy))
-        save_table[epoch, :] = epoch + 1, train_accuracy, test_accuracy
 
         # Save the best checkpoint
         if test_accuracy > best_acc:
@@ -168,12 +170,17 @@ def complementary_learning(args, model, optimizer):
                 'optimizer': optimizer.state_dict(),
             }, os.path.join(args.out_dir, "cl_best_checkpoint.pth.tar"))
 
+    # stat
+    wrong_count, correct_count = stat(x_to_mcls, x_to_tls)
+    print("Epoch {}: {}% data are given wrong complementary labels, and each data are given {} correct complementary labels on average!".format(epoch + 1, wrong_count * 100, correct_count))
+
     # plot
+    print(train_acc_list)
+    print(test_acc_list)
     print(">> Best test acc: {}".format(max(test_acc_list)))
     epoch = [i for i in range(args.warmup_epochs)]
     show([epoch, epoch], [train_acc_list, test_acc_list], label=["train set acc", "test set acc"], title=args.dataset,
          xdes="Epoch", ydes="Accuracy", path=os.path.join(args.out_dir, "cl_acc.png"))
-    np.savetxt(args.method + '_results.txt', save_table, delimiter=',', fmt='%1.3f')
 
 
 def lr_schedule(lr, epoch):
@@ -224,19 +231,34 @@ def get_pred(cl_model, data):
     return predicted
 
 
+def weight_update(weight, logit, id):
+    weight = weight.to(device)
+    # num_class = logit.size(1)
+    # for i, pred in enumerate(logit):
+    #     idx = id[i].item()
+    #     mcls = x_to_mcls[idx]
+    #     weight[idx] = torch.zeros(num_class).scatter_(0, torch.LongTensor(list(mcls)), 1) / len(mcls)
+    new_weight = 1 - torch.softmax(logit, dim=1)
+    new_weight = new_weight / torch.sum(new_weight, dim=1).view(-1, 1)
+    weight[id] = args.alpha * weight[id] + (1 - args.alpha) * new_weight
+
+    return weight
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Adversarial Training with Complementary Labels')
     parser.add_argument('--lr', type=float, default=1e-2, help='optimizer\'s learning rate', )
     parser.add_argument('--batch_size', type=int, default=256, help='batch_size of ordinary labels.')
-    parser.add_argument('--dataset', type=str, default="cifar10", choices=['mnist', 'cifar10'],
-                        help="dataset, choose from mnist, cifar10")
+    parser.add_argument('--dataset', type=str, default="cifar10", choices=['mnist', 'kuzushiji', 'fashion', 'cifar10'],
+                        help="dataset, choose from mnist, kuzushiji, fashion, cifar10")
     parser.add_argument('--method', type=str, default='free', choices=['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp', 'scl_nl'],
                         help='method type. ga: gradient ascent. nn: non-negative. free: Theorem 1. pc: Ishida2017. forward: Yu2018.')
     parser.add_argument('--model', type=str, default='resnet34', choices=['linear', 'mlp', 'cnn', 'resnet18', 'resnet34', 'densenet', 'wrn'], help='model name')
-    parser.add_argument('--baseline', type=str, default='one_stage', choices=['one_stage', 'two_stage'], help='baseline methods')
+    parser.add_argument('--baseline', type=str, default='two_stage', choices=['one_stage', 'two_stage'], help='baseline methods')
     parser.add_argument('--epochs', default=300, type=int, help='number of epochs')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='weight decay')
     parser.add_argument('--momentum', type=float, default=0.9, help='SGD momentum')
+    parser.add_argument('--alpha', type=float, default=0.9, help='exponential moving average')
     parser.add_argument('--seed', type=int, default=1, help='random seed')
     parser.add_argument('--out_dir', type=str, default='./ATCL_result', help='dir of output')
     # for adv training
@@ -249,8 +271,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # To be removed
-    args.epochs, args.warmup_epochs, args.generate_cl_steps = 100, 0, 0
-    if args.dataset == "mnist":
+    args.epochs, args.warmup_epochs, args.generate_cl_steps = 300, 0, 0
+    if args.dataset != "cifar10":
         args.lr, args.model, args.weight_decay = 5e-5, 'mlp', 1e-4
         args.epsilon, args.num_steps, args.step_size = 0.3, 40, 0.01
 
@@ -267,7 +289,8 @@ if __name__ == "__main__":
         os.makedirs(args.out_dir)
 
     full_train_loader, train_loader, test_loader, ordinary_train_dataset, test_dataset, K, input_dim, input_channel = prepare_data(dataset=args.dataset, batch_size=args.batch_size)
-    ordinary_train_loader, complementary_train_loader, ccp, x_to_mcls, x_to_tls = prepare_train_loaders(full_train_loader=full_train_loader, batch_size=args.batch_size, ordinary_train_dataset=ordinary_train_dataset)
+    ordinary_train_loader, complementary_train_loader, ccp, x_to_mcls, x_to_tls, partialY = prepare_train_loaders(full_train_loader=full_train_loader, batch_size=args.batch_size, ordinary_train_dataset=ordinary_train_dataset)
+    partialY = partialY.to(device)
 
     model = create_model(args, input_dim, input_channel, K)
     print(args.model)
@@ -275,10 +298,10 @@ if __name__ == "__main__":
     model = model.to(device)
     model = torch.nn.DataParallel(model)
 
-    if args.dataset == "mnist":
+    if args.dataset == "cifar10":
+        optimizer1 = torch.optim.SGD(model.parameters(), weight_decay=args.weight_decay, lr=args.lr,momentum=args.momentum)
+    else:
         optimizer1 = torch.optim.Adam(model.parameters(), weight_decay=args.weight_decay, lr=args.lr)
-    elif args.dataset == "cifar10":
-        optimizer1 = torch.optim.SGD(model.parameters(), weight_decay=args.weight_decay, lr=args.lr, momentum=args.momentum)
 
     train_accuracy = accuracy_check(loader=train_loader, model=model)
     test_accuracy = accuracy_check(loader=test_loader, model=model)
@@ -287,15 +310,15 @@ if __name__ == "__main__":
     # complementary learning, ref to "Complementary-label learning for arbitrary losses and models"
     if args.warmup_epochs > 0:
         print(">> Learning with Complementary Labels")
-        complementary_learning(args, model, optimizer1)
+        complementary_learning(args, model, optimizer1, partialY)
 
     # for two_stage baseline
     adv_model = torch.nn.DataParallel(create_model(args, input_dim, input_channel, K).to(device)) if args.baseline == "two_stage" else model
-    if args.dataset == "mnist":
-        optimizer2 = torch.optim.Adam(adv_model.parameters(), weight_decay=args.weight_decay, lr=args.lr) if args.baseline == "two_stage" else optimizer1
-    elif args.dataset == "cifar10":
+    if args.dataset == "cifar10":
         optimizer2 = torch.optim.SGD(adv_model.parameters(), weight_decay=args.weight_decay, lr=args.lr, momentum=args.momentum) if args.baseline == "two_stage" else optimizer1
+    else:
+        optimizer2 = torch.optim.Adam(adv_model.parameters(), weight_decay=args.weight_decay, lr=args.lr) if args.baseline == "two_stage" else optimizer1
 
     if args.epochs > 0:
         print(">> Adversarial learning with Complementary Labels")
-        adversarial_train(args, adv_model, optimizer2)
+        adversarial_train(args, adv_model, optimizer2, partialY)

@@ -2,6 +2,7 @@ import numpy as np
 from models import *
 from torch.autograd import Variable
 from utils_algo import *
+from utils_mcl_loss import *
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -21,7 +22,7 @@ def cwloss(output, target, confidence=50, num_classes=10):
     return loss
 
 
-def adv_cl(model, cl_model, data, target, true_labels, id, epsilon, step_size, num_steps, K, ccp, x_to_mcls, generate_cl_steps=100, meta_method="nn", category="Madry", rand_init=True):
+def adv_cl(model, data, target, pseudo_labels, true_labels, id, epsilon, step_size, num_steps, K, ccp, x_to_mcls, partialY, generate_cl_steps=100, meta_method="nn", category="Madry", rand_init=True):
     """
         min---max \bar{l}(\bar{y}, g(x))
            |--min cross-entropy(\bar{y}, g(x)) -> mcls
@@ -83,27 +84,33 @@ def adv_cl(model, cl_model, data, target, true_labels, id, epsilon, step_size, n
         if generate_cl_steps <= 0: y_adv = torch.cat((y_adv, predict))
         model.zero_grad()
         with torch.enable_grad():
-            loss_adv, _ = chosen_loss_c(f=output, K=K, labels=target, ccp=ccp, meta_method=meta_method)
-            # loss_adv = nn.CrossEntropyLoss(reduction="mean")(output, target)
+            loss_adv = nn.CrossEntropyLoss(reduction="mean")(output, target)
+            # loss_adv, _ = chosen_loss_c(f=output, K=K, labels=target, ccp=ccp, meta_method=meta_method)
             # loss_adv = weighted_mcl_loss(output, x_to_mcls, id)
         loss_adv.backward()
         eta = step_size * x_adv.grad.sign()
         # Update adversarial data
-        x_adv = x_adv.detach() + eta
+        # x_adv = x_adv.detach() + eta
+        x_adv = x_adv.detach() - eta
         x_adv = torch.min(torch.max(x_adv, data - epsilon), data + epsilon)
         x_adv = torch.clamp(x_adv, 0.0, 1.0)
     x_adv = Variable(x_adv, requires_grad=False)
     y_adv = torch.cat((y_adv, target))
     y_adv = y_adv.view(-1, bs).transpose(0, 1)
-    # updata x_to_mcls
+    # updata x_to_mcls & partialY
     for i, y in enumerate(y_adv):
         new_cls = torch.unique(y[1:]).tolist()
         if -1 in new_cls: new_cls.remove(-1)
         # remove the potential true labels
-        if y[1] in new_cls: new_cls.remove(y[1])
+        # if y[1] in new_cls: new_cls.remove(y[1])
         if y[-1] in new_cls: new_cls.remove(y[-1])
-        x_to_mcls[id[i].item()] = x_to_mcls[id[i].item()] | set(new_cls)
-    return x_adv, y_adv
+        if pseudo_labels[i] in new_cls: new_cls.remove(pseudo_labels[i])
+
+        idx = id[i].item()
+        x_to_mcls[idx] = x_to_mcls[idx] | set(new_cls)
+        partialY[idx] = torch.ones(K).scatter_(0, torch.LongTensor(list(x_to_mcls[idx])), 0)
+
+    return x_adv, y_adv, partialY
 
 
 def pgd(model, data, target, epsilon, step_size, num_steps, loss_fn, category, rand_init, num_classes=10):

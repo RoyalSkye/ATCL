@@ -33,13 +33,13 @@ def non_negative_loss(f, K, labels, ccp, beta):
     return final_loss, torch.mul(torch.from_numpy(count).float().to(device), loss_vector)
 
 
-def forward_loss(f, K, labels):
+def forward_loss(f, K, labels, reduction='mean'):
     Q = torch.ones(K, K) * 1/(K-1)  # uniform assumption
     Q = Q.to(device)
     for k in range(K):
         Q[k, k] = 0
     q = torch.mm(F.softmax(f, 1), Q)
-    return F.nll_loss(q.log(), labels.long())
+    return F.nll_loss(q.log(), labels.long(), reduction=reduction)
 
 
 def pc_loss(f, K, labels):
@@ -51,7 +51,7 @@ def pc_loss(f, K, labels):
     return pc_loss
 
 
-def phi_loss(phi, logits, target):
+def phi_loss(phi, logits, target, reduction='mean'):
     """
         Official implementation of "Unbiased Risk Estimators Can Mislead: A Case Study of Learning with Complementary Labels"
         by Yu-Ting Chou
@@ -72,23 +72,28 @@ def phi_loss(phi, logits, target):
     else:
         raise ValueError('Invalid phi function')
 
-    loss = -F.nll_loss(activated_prob, target)
+    loss = -F.nll_loss(activated_prob, target, reduction=reduction)
     return loss
 
 
-def weighted_mcl_loss(logits, x_to_mcls, id):
-    total_loss = 0
-    activated_prob = torch.exp(F.softmax(logits, dim=1))
-    for i, idx in enumerate(id):
-        mcls = x_to_mcls[idx.item()]
-        for cl in mcls:
-            cl = torch.LongTensor([cl]).to(device)
-            total_loss += -F.nll_loss(activated_prob[i].unsqueeze(0), cl) * 1/len(mcls)
+def weighted_mcl_loss(logits, w, ccp, meta_method):
+    assert meta_method in ['scl_exp', 'scl_nl', 'forward'], "current weighted mcl loss do not support {}".format(meta_method)
+    w, total_loss, bs, num_class = w.to(device), None, logits.size(0), logits.size(1)
+    all_target = [torch.LongTensor([i]) for i in range(num_class)]
+    for target in all_target:
+        target = target.expand(bs).to(device)
+        loss, _ = chosen_loss_c(f=logits, K=num_class, labels=target, ccp=ccp, meta_method=meta_method, reduction='none')
+        total_loss = torch.cat((total_loss, loss), dim=0) if total_loss is not None else loss
+    total_loss = total_loss.view(num_class, bs).transpose(0, 1)  # (bs, num_class)
+    total_loss = torch.mul(total_loss, w).sum(dim=1)  # (bs)
+    avg_loss = total_loss.mean()  # treat all samples equally
+    # data_w = torch.max(torch.softmax(logits, dim=1), dim=1)[0]
+    # avg_loss = torch.sum(total_loss * (data_w / torch.sum(data_w)))
 
-    return total_loss
+    return avg_loss, None
 
 
-def chosen_loss_c(f, K, labels, ccp, meta_method):
+def chosen_loss_c(f, K, labels, ccp, meta_method, reduction='mean'):
     class_loss_torch = None
     if meta_method == 'free':
         final_loss, class_loss_torch = assump_free_loss(f=f, K=K, labels=labels, ccp=ccp)
@@ -97,9 +102,9 @@ def chosen_loss_c(f, K, labels, ccp, meta_method):
     elif meta_method == 'nn':
         final_loss, class_loss_torch = non_negative_loss(f=f, K=K, labels=labels, beta=0, ccp=ccp)
     elif meta_method == 'forward':
-        final_loss = forward_loss(f=f, K=K, labels=labels)
+        final_loss = forward_loss(f=f, K=K, labels=labels, reduction=reduction)
     elif meta_method == 'pc':
         final_loss = pc_loss(f=f, K=K, labels=labels)
     elif meta_method[:3] == "scl":
-        final_loss = phi_loss(meta_method[4:], f, labels)
+        final_loss = phi_loss(meta_method[4:], f, labels, reduction=reduction)
     return final_loss, class_loss_torch
