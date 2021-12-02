@@ -162,13 +162,14 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=int, nargs='+', default=[1, 2, 3], help='random seed')
     parser.add_argument('--out_dir', type=str, default='./ATCL_result', help='dir of output')
     # for adv training
-    parser.add_argument('--epsilon', type=float, default=0.007, help='perturbation bound')
+    parser.add_argument('--epsilon', type=float, default=1./255, help='perturbation bound')
     parser.add_argument('--num_steps', type=int, default=1, help='maximum perturbation step K')
-    parser.add_argument('--step_size', type=float, default=0.007, help='step size')
+    parser.add_argument('--step_size', type=float, default=1./255, help='step size')
     parser.add_argument('--at', action='store_true', help="do one-step pgd during training, default: False")
     args = parser.parse_args()
 
     # To be removed
+    assert args.epsilon == args.step_size
     if args.dataset == "cifar10":
         args.lr, args.model, args.weight_decay = 1e-2, 'resnet34', 5e-4
 
