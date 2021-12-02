@@ -1,3 +1,7 @@
+"""
+    Official implementation from "Learning with Multiple Complementary Labels"
+    by Lei Feng et al.
+"""
 import torch.nn as nn
 import torch
 import math

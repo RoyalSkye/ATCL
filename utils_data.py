@@ -48,25 +48,29 @@ def prepare_data(dataset, batch_size):
     return full_train_loader, train_loader, test_loader, ordinary_train_dataset, test_dataset, num_classes, input_dim, input_channel
 
 
-def prepare_train_loaders(full_train_loader, batch_size, ordinary_train_dataset):
+def prepare_train_loaders(full_train_loader, batch_size, ordinary_train_dataset, cl_num):
+    """
+        ccp is only used for "free", "ga", "nn"
+        partialY is used for utils_mcl_loss, in this case, complementary_labels(var) is useless
+    """
     for i, (data, labels) in enumerate(full_train_loader):
         K = torch.max(labels)+1  # K is number of classes, full_train_loader is full batch
         bs = labels.size(0)
     complementary_labels = generate_compl_labels(labels)
     x_to_tls = {i: -1 for i in range(bs)}
     x_to_mcls = {i: set() for i in range(bs)}
-    # w = torch.zeros(bs, K).scatter_(1, torch.LongTensor(complementary_labels).unsqueeze(1), 1)  # normalized weight for each potential cls
-    partialY = torch.ones(bs, K).scatter_(1, torch.LongTensor(complementary_labels).unsqueeze(1), 0)  # used for utils_mcl_loss
-    for idx, tl in enumerate(labels.tolist()):
-        x_to_tls[idx] = tl
-        # all = set(i for i in range(K))
-        # cl = complementary_labels[idx].item()
-        # mcls = random.sample(all - {tl, cl}, 2-1)
-        # mcls.append(cl)
-        # x_to_mcls[idx] = set(mcls)
-        # partialY[idx] = torch.ones(K).scatter_(0, torch.LongTensor(mcls), 0)
+    partialY = torch.ones(bs, K).scatter_(1, torch.LongTensor(complementary_labels).unsqueeze(1), 0)
     for idx, cl in enumerate(complementary_labels.tolist()):
         x_to_mcls[idx] = {cl}
+    for idx, tl in enumerate(labels.tolist()):
+        x_to_tls[idx] = tl
+        if cl_num != 1:
+            all = set(i for i in range(K))
+            cl = complementary_labels[idx].item()
+            mcls = random.sample(all - {tl, cl}, cl_num-1)
+            mcls.append(cl)
+            x_to_mcls[idx] = set(mcls)
+            partialY[idx] = torch.ones(K).scatter_(0, torch.LongTensor(mcls), 0)
     ccp = class_prior(complementary_labels)
     id = torch.arange(bs)
     complementary_dataset = torch.utils.data.TensorDataset(data, torch.from_numpy(complementary_labels).long(), labels, id)

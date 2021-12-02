@@ -12,7 +12,5 @@ __pycache__/
 .idea/
 
 # private files
-idea.txt
-eval.py
-1.md
-2.md
+utils_plot.py
+

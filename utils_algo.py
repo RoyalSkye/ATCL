@@ -54,7 +54,7 @@ def pc_loss(f, K, labels):
 def phi_loss(phi, logits, target, reduction='mean'):
     """
         Official implementation of "Unbiased Risk Estimators Can Mislead: A Case Study of Learning with Complementary Labels"
-        by Yu-Ting Chou
+        by Yu-Ting Chou et al.
     """
     if phi == 'lin':
         activated_prob = F.softmax(logits, dim=1)
@@ -74,23 +74,6 @@ def phi_loss(phi, logits, target, reduction='mean'):
 
     loss = -F.nll_loss(activated_prob, target, reduction=reduction)
     return loss
-
-
-def weighted_mcl_loss(logits, w, ccp, meta_method):
-    assert meta_method in ['scl_exp', 'scl_nl', 'forward'], "current weighted mcl loss do not support {}".format(meta_method)
-    w, total_loss, bs, num_class = w.to(device), None, logits.size(0), logits.size(1)
-    all_target = [torch.LongTensor([i]) for i in range(num_class)]
-    for target in all_target:
-        target = target.expand(bs).to(device)
-        loss, _ = chosen_loss_c(f=logits, K=num_class, labels=target, ccp=ccp, meta_method=meta_method, reduction='none')
-        total_loss = torch.cat((total_loss, loss), dim=0) if total_loss is not None else loss
-    total_loss = total_loss.view(num_class, bs).transpose(0, 1)  # (bs, num_class)
-    total_loss = torch.mul(total_loss, w).sum(dim=1)  # (bs)
-    avg_loss = total_loss.mean()  # treat all samples equally
-    # data_w = torch.max(torch.softmax(logits, dim=1), dim=1)[0]
-    # avg_loss = torch.sum(total_loss * (data_w / torch.sum(data_w)))
-
-    return avg_loss, None
 
 
 def chosen_loss_c(f, K, labels, ccp, meta_method, reduction='mean'):

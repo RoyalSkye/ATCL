@@ -1,5 +1,4 @@
 import numpy as np
-from models import *
 from torch.autograd import Variable
 from utils_algo import *
 from utils_mcl_loss import *
@@ -22,12 +21,9 @@ def cwloss(output, target, confidence=50, num_classes=10):
     return loss
 
 
-def adv_cl(model, data, target, pseudo_labels, true_labels, id, epsilon, step_size, num_steps, K, ccp, x_to_mcls, partialY, generate_cl_steps=100, meta_method="nn", category="Madry", rand_init=True):
-    """
-        min---max \bar{l}(\bar{y}, g(x))
-           |--min cross-entropy(\bar{y}, g(x)) -> mcls
-    """
+def adv_cl(args, model, data, target, true_labels, id, ccp, partialY, loss_fn, category="Madry", rand_init=True):
     model.eval()
+    epsilon, step_size, num_steps = args.epsilon, args.step_size, args.num_steps
     y_adv, bs = true_labels, true_labels.size(0)
     if category == "trades":
         x_adv = data.detach() + 0.001 * torch.randn(data.shape).to(device).detach() if rand_init else data.detach()
@@ -35,82 +31,31 @@ def adv_cl(model, data, target, pseudo_labels, true_labels, id, epsilon, step_si
         x_adv = data.detach() + torch.from_numpy(np.random.uniform(-epsilon, epsilon, data.shape)).float().to(device) if rand_init else data.detach()
         x_adv = torch.clamp(x_adv, 0.0, 1.0)
 
-    # min: generate multiple complementary labels friendly: for each datapoint, stop when predict = (cl) target
-    if generate_cl_steps > 0:
-        iter_adv = x_adv.clone().detach()
-        iter_target = target.clone().detach()
-        remain_index = [i for i in range(bs)]
-        for k in range(generate_cl_steps):
-            iter_adv.requires_grad_()
-            output_index = []
-            iter_index = []
-            output = model(iter_adv)
-            # prob_ = torch.softmax(output.detach(), dim=1)
-            predict = torch.max(output.detach(), dim=1)[1]
-            predict_ext = torch.full((bs,), -1).to(device)
-            predict_ext[remain_index] = predict
-            y_adv = torch.cat((y_adv, predict_ext))
-            for idx in range(len(predict)):
-                if predict[idx] == iter_target[idx]:
-                    output_index.append(idx)
-                else:
-                    iter_index.append(idx)
-            remain_index = [remain_index[i] for i in range(len(remain_index)) if i not in output_index]
-            model.zero_grad()
-            with torch.enable_grad():
-                # loss_adv, _ = chosen_loss_c(f=output, K=K, labels=iter_target, ccp=ccp, meta_method=meta_method)
-                loss_adv = nn.CrossEntropyLoss(reduction="mean")(output, iter_target)
-                # one_hot = torch.zeros(iter_target.size(0), K).to(device).scatter_(1, iter_target.view(-1, 1), 1)
-                # loss_adv = nn.L1Loss(reduction="mean")(output, one_hot)
-            loss_adv.backward()
-            grad = iter_adv.grad
-            if len(iter_index) != 0:
-                iter_adv = iter_adv[iter_index]
-                iter_target = iter_target[iter_index]
-                grad = grad[iter_index]
-                eta = step_size * grad.sign()
-                # iter_adv = iter_adv.detach() - eta + 0.001 * torch.randn(iter_adv.shape).detach().to(device)
-                iter_adv = iter_adv.detach() - eta
-                iter_adv = torch.clamp(iter_adv, 0.0, 1.0)
-            else:
-                break
-        iter_adv = Variable(iter_adv, requires_grad=False)
-
     # generate adversarial examples
     for k in range(num_steps):
         x_adv.requires_grad_()
         output = model(x_adv)
         predict = torch.max(output.detach(), dim=1)[1]
-        if generate_cl_steps <= 0: y_adv = torch.cat((y_adv, predict))
+        y_adv = torch.cat((y_adv, predict))
         model.zero_grad()
         with torch.enable_grad():
-            loss_adv = nn.CrossEntropyLoss(reduction="mean")(output, target)
-            # loss_adv, _ = chosen_loss_c(f=output, K=K, labels=target, ccp=ccp, meta_method=meta_method)
-            # loss_adv = weighted_mcl_loss(output, x_to_mcls, id)
+            if args.method in ['exp', 'log']:
+                loss_adv = loss_fn(output, partialY[id].float())
+            elif args.method in ['mae', 'mse', 'ce', 'gce', 'phuber_ce']:
+                loss_adv = unbiased_estimator(loss_fn, output, partialY[id].float())
+            elif args.cl_num == 1 and args.method in ['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp', 'scl_nl']:
+                loss_adv, _ = chosen_loss_c(f=output, K=output.size(-1), labels=target, ccp=ccp, meta_method=args.method)
         loss_adv.backward()
         eta = step_size * x_adv.grad.sign()
         # Update adversarial data
-        # x_adv = x_adv.detach() + eta
-        x_adv = x_adv.detach() - eta
+        x_adv = x_adv.detach() + eta
         x_adv = torch.min(torch.max(x_adv, data - epsilon), data + epsilon)
         x_adv = torch.clamp(x_adv, 0.0, 1.0)
     x_adv = Variable(x_adv, requires_grad=False)
     y_adv = torch.cat((y_adv, target))
     y_adv = y_adv.view(-1, bs).transpose(0, 1)
-    # updata x_to_mcls & partialY
-    for i, y in enumerate(y_adv):
-        new_cls = torch.unique(y[1:]).tolist()
-        if -1 in new_cls: new_cls.remove(-1)
-        # remove the potential true labels
-        # if y[1] in new_cls: new_cls.remove(y[1])
-        if y[-1] in new_cls: new_cls.remove(y[-1])
-        if pseudo_labels[i] in new_cls: new_cls.remove(pseudo_labels[i])
 
-        idx = id[i].item()
-        x_to_mcls[idx] = x_to_mcls[idx] | set(new_cls)
-        partialY[idx] = torch.ones(K).scatter_(0, torch.LongTensor(list(x_to_mcls[idx])), 0)
-
-    return x_adv, y_adv, partialY
+    return x_adv, y_adv
 
 
 def pgd(model, data, target, epsilon, step_size, num_steps, loss_fn, category, rand_init, num_classes=10):

@@ -46,4 +46,3 @@ def stat(x_to_mcls, x_to_tls):
     correct_cl_count -= wrong_cl_count
 
     return wrong_cl_count/len(x_to_mcls), correct_cl_count/len(x_to_mcls)
-
