@@ -70,6 +70,7 @@ def complementary_learning(args, model, optimizer, partialY, seed):
     print(train_acc_list)
     print(test_acc_list)
     print(">> Best test acc({}): {}".format(best_epoch, max(test_acc_list)))
+    print(">> AVG test acc of last 10 epochs: {}".format(np.mean(test_acc_list[-10:])))
     epoch = [i for i in range(args.epochs)]
     show([epoch] * 2, [train_acc_list, test_acc_list], label=["train acc", "test acc"], title=args.dataset, xdes="Epoch", ydes="Accuracy", path=os.path.join(args.out_dir, "cl_acc_seed{}.png".format(seed)))
 
