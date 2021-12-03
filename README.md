@@ -14,21 +14,32 @@ CUDA_VISIBLE_DEVICES=1 nohup python -u main.py --dataset 'kuzushiji' --cl_num=1 
 
 ##### Exp 1: Single Complementary Label
 
-|           | ***MNIST*** | ***Fashion*** | ***Kuzushiji*** |
-| :-------: | :---------: | :-----------: | :-------------: |
-|    EXP    | 93.32(0.03) |  83.68(0.23)  |   65.46(1.1)    |
-|    LOG    | 93.37(0.08) |  83.73(0.2)   |   66.41(0.44)   |
-|    MAE    |             |               |                 |
-|    MSE    |             |               |                 |
-|    GCE    |             |               |                 |
-| Phuber-CE |             |               |                 |
-|    CCE    |             |               |                 |
-|  SCL_EXP  |             |               |                 |
-|  SCL_NL   |             |               |                 |
-|   L-UW    |             |               |                 |
-|    L-W    |             |               |                 |
-| EXP+AT20. | 97.04(0.04) |  84.28(0.09)  |   81.21(0.26)   |
-| LOG+AT20. | 97.06(0.1)  |  84.84(0.14)  |   81.18(0.49)   |
+<p align="center">  
+  <img src="./imgs/mnist.png" alt="mnist" width="250" />
+	<img src="./imgs/fashion.png" alt="fashion" width="250" />
+	<img src="./imgs/kuzushiji.png" alt="kuzushiji" width="250" /></br>
+</p>
+
+|           |  ***MNIST***   |  ***Fashion***  | ***Kuzushiji*** |
+| :-------: | :------------: | :-------------: | :-------------: |
+|    EXP    |  93.32(0.03)   |   83.68(0.23)   |   65.46(1.1)    |
+|    LOG    |  93.37(0.08)   |   83.73(0.2)    |   66.41(0.44)   |
+|    MAE    |  92.75(0.12)   |   77.61(4.08)   |   63.35(0.13)   |
+|    MSE    |   81.8(0.35)   |   77.84(0.1)    |   53.51(0.4)    |
+|    GCE    |  87.85(0.21)   |   81.13(0.31)   |   59.49(1.05)   |
+| Phuber-CE |  75.79(0.73)   |   71.53(0.76)   |   43.88(0.55)   |
+|    CCE    |  76.28(0.32)   |   69.12(1.09)   |   53.08(0.14)   |
+|   Free    |   76.45(0.1)   |   70.48(0.87)   |   52.7(0.21)    |
+|    PC     |  84.32(0.74)   |   76.28(0.66)   |   59.0(0.79)    |
+|  Forward  |  93.56(0.09)   |   83.66(0.17)   |   67.02(0.46)   |
+|    GA     |  92.75(0.07)   |   81.49(0.22)   |   70.44(0.26)   |
+|    NN     |  89.67(0.24)   |   77.27(0.32)   |   63.37(0.28)   |
+|  SCL_EXP  |   93.44(0.1)   |   83.64(0.25)   |   65.96(1.02)   |
+|  SCL_NL   |  93.58(0.07)   |   83.61(0.15)   |   67.0(0.49)    |
+|   L-UW    |  92.88(0.12)   |   83.25(0.21)   |   66.09(0.12)   |
+|    L-W    |  92.57(0.11)   |   82.99(0.19)   |   67.02(2.36)   |
+| EXP+AT20. |  97.04(0.04)   |   84.28(0.09)   | **81.21(0.26)** |
+| LOG+AT20. | **97.06(0.1)** | **84.84(0.14)** |   81.18(0.49)   |
 
 ##### Exp 2: Multiple Complementary Labels
 
@@ -60,26 +71,26 @@ CUDA_VISIBLE_DEVICES=1 nohup python -u main.py --dataset 'kuzushiji' --cl_num=1 
   <img src="./imgs/ablation_kuzushiji.png" alt="ablation" width="400" /></br>
 </p>
 
-|            |      MNIST      |     Fashion     |    Kuzushiji    |                 |                 |  Kuzushiji-5CL  |
-| :--------: | :-------------: | :-------------: | :-------------: | :-------------: | :-------------: | :-------------: |
-|            |     EXP+AT      |     EXP+AT      |     EXP+AT      |     LOG+AT      | EXP+AT (linear) |     EXP+AT      |
-|  Baseline  |   93.32(0.03)   |   83.68(0.23)   |   65.46(1.1)    |   66.41(0.44)   |   61.23(0.22)   |   80.8(2.62)    |
-| **1/255**  |   93.48(0.15)   |   84.25(0.16)   |   66.42(1.04)   |   67.52(0.21)   |   61.3(0.19)    |   79.35(0.48)   |
-|   2/255    |                 |                 |   67.52(1.0)    |                 |                 |                 |
-| **4/255**  |   94.62(0.25)   |   85.17(0.03)   |   70.09(0.5)    |   71.11(0.42)   | **61.39(0.11)** |   83.44(2.45)   |
-|   6/255    |                 |                 |   71.83(0.66)   |                 |                 |                 |
-| **8/255**  |   95.67(0.13)   | **85.42(0.07)** |   72.84(0.73)   |   73.55(0.27)   |   60.72(0.07)   | **84.38(2.58)** |
-|   12/255   |                 |                 |   74.36(0.41)   |                 |                 |                 |
-| **16/255** |   96.8(0.03)    |   84.88(0.04)   |   76.96(2.93)   |   80.91(0.39)   |   54.84(0.2)    |   83.23(0.2)    |
-|   20/255   |   97.04(0.04)   |   84.28(0.09)   | **81.21(0.26)** |                 |                 |                 |
-| **24/255** | **97.25(0.04)** |   84.04(0.42)   |   80.91(0.79)   | **81.13(0.34)** |   48.14(0.67)   |   82.86(0.21)   |
-|   28/255   |                 |                 |   80.21(1.0)    |                 |                 |                 |
-|   32/255   |   96.01(0.05)   |   84.5(0.13)    |   79.47(0.42)   |   80.25(0.28)   |   14.88(3.01)   | **85.72(2.65)** |
-|   36/255   |                 |                 |   78.10(0.5)    |                 |                 |                 |
-|   40/255   |                 |                 |   76.32(0.13)   |                 |                 |                 |
-|   44/255   |                 |                 |   74.70(1.75)   |                 |                 |                 |
-|   48/255   |                 |                 |   62.58(7.92)   |                 |                 |                 |
-|   64/255   |                 |   79.95(3.46)   |   64.38(4.47)   |                 |                 |                 |
+|            |      MNIST      |     Fashion     |    Kuzushiji    |                 |                 |  3CL   |       5CL       |  7CL   |
+| :--------: | :-------------: | :-------------: | :-------------: | :-------------: | :-------------: | :----: | :-------------: | :----: |
+|            |     EXP+AT      |     EXP+AT      |     EXP+AT      |     LOG+AT      | EXP+AT (linear) | EXP+AT |     EXP+AT      | EXP+AT |
+|  Baseline  |   93.32(0.03)   |   83.68(0.23)   |   65.46(1.1)    |   66.41(0.44)   |   61.23(0.22)   |        |   80.8(2.62)    |        |
+|   1/255    |   93.48(0.15)   |   84.25(0.16)   |   66.42(1.04)   |   67.52(0.21)   |   61.3(0.19)    |        |   79.35(0.48)   |        |
+|   2/255    |                 |                 |   67.52(1.0)    |                 |                 |        |                 |        |
+| **4/255**  |   94.62(0.25)   |   85.17(0.03)   |   70.09(0.5)    |   71.11(0.42)   | **61.39(0.11)** |        |   83.44(2.45)   |        |
+|   6/255    |                 |                 |   71.83(0.66)   |                 |                 |        |                 |        |
+| **8/255**  |   95.67(0.13)   | **85.42(0.07)** |   72.84(0.73)   |   73.55(0.27)   |   60.72(0.07)   |        | **84.38(2.58)** |        |
+| **12/255** |                 |                 |   74.36(0.41)   |                 |                 |        |                 |        |
+| **16/255** |   96.8(0.03)    |   84.88(0.04)   |   76.96(2.93)   |   80.91(0.39)   |   54.84(0.2)    |        |   83.23(0.2)    |        |
+| **20/255** |   97.04(0.04)   |   84.28(0.09)   | **81.21(0.26)** |                 |                 |        |                 |        |
+| **24/255** | **97.25(0.04)** |   84.04(0.42)   |   80.91(0.79)   | **81.13(0.34)** |   48.14(0.67)   |        |   82.86(0.21)   |        |
+|   28/255   |                 |                 |   80.21(1.0)    |                 |                 |        |                 |        |
+|   32/255   |   96.01(0.05)   |   84.5(0.13)    |   79.47(0.42)   |   80.25(0.28)   |   14.88(3.01)   |        | **85.72(2.65)** |        |
+|   36/255   |                 |                 |   78.10(0.5)    |                 |                 |        |                 |        |
+|   40/255   |                 |                 |   76.32(0.13)   |                 |                 |        |                 |        |
+|   44/255   |                 |                 |   74.70(1.75)   |                 |                 |        |                 |        |
+|   48/255   |                 |                 |   62.58(7.92)   |                 |                 |        |                 |        |
+|   64/255   |                 |   79.95(3.46)   |   64.38(4.47)   |                 |                 |        |                 |        |
 
 
 
@@ -95,8 +106,10 @@ CUDA_VISIBLE_DEVICES=1 nohup python -u main.py --dataset 'kuzushiji' --cl_num=1 
 
 #### Reference
 
-1. Y. T. Chou, G. Niu, H. T. Lin, and M. Sugiyama.<br>**Unbiased Risk Estimators Can Mislead: A Case Study of Learning with Complementary Labels**.<br>In *ICML 2020*. [[paper]](https://arxiv.org/abs/2007.02235)
-2. T. Ishida, G. Niu, A. K. Menon, and M. Sugiyama.<br>**Complementary-label learning for arbitrary losses and models**.<br>In *ICML 2019*. [[paper]](https://arxiv.org/abs/1810.04327)
-3. Yu, X., Liu, T., Gong, M., and Tao, D.<br>**Learning with biased complementary labels**.<br>In *ECCV 2018*. [[paper]](https://arxiv.org/abs/1711.09535)
-4. T. Ishida, G. Niu, W. Hu, and M. Sugiyama.<br>**Learning from complementary labels**.<br>In *NeurIPS 2017*. [[paper]](https://arxiv.org/abs/1705.07541)
+1. Gao, Y., & Zhang, M. L.<br>**Discriminative Complementary-Label Learning with Weighted Loss**<br>In *ICML 2021*. [[paper]](http://proceedings.mlr.press/v139/gao21d/gao21d.pdf)
+2. Feng, L., Kaneko, T., Han, B., Niu, G., An, B., & Sugiyama, M.<br>**Learning with Multiple Complementary Labels**<br>In *ICML 2020*. [[paper]](https://arxiv.org/abs/1912.12927v3)
+1. Chou, Y. T., Niu, G., Lin, H. T., & Sugiyama, M.<br>**Unbiased Risk Estimators Can Mislead: A Case Study of Learning with Complementary Labels**<br>In *ICML 2020*. [[paper]](https://arxiv.org/abs/2007.02235)
+2. Ishida, T., Niu, G., Menon, A., & Sugiyama, M.<br>**Complementary-label learning for arbitrary losses and models**<br>In *ICML 2019*. [[paper]](https://arxiv.org/abs/1810.04327)
+3. Yu, X., Liu, T., Gong, M., & Tao, D.<br>**Learning with biased complementary labels**<br>In *ECCV 2018*. [[paper]](https://arxiv.org/abs/1711.09535)
+4. Ishida, T., Niu, G., Hu, W., & Sugiyama, M.<br>**Learning from complementary labels**<br>In *NeurIPS 2017*. [[paper]](https://arxiv.org/abs/1705.07541)
 

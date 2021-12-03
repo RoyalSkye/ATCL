@@ -55,8 +55,8 @@ def show_std(x, y, label, title, xdes, ydes, path, x_scale="linear", dpi=150):
     """
     plt.style.use('ggplot')
     plt.figure(figsize=(10, 8))
-    colors = ['tab:green', 'tab:orange', 'tab:blue', 'tab:red', 'tab:cyan',
-              'tab:gray', 'tab:brown', 'tab:purple', 'tab:olive', 'tab:pink']
+    colors = ['tab:green', 'tab:orange', 'tab:blue', 'tab:olive', 'tab:cyan',
+              'tab:gray', 'tab:pink', 'tab:brown', 'tab:red', 'tab:purple']
 
     assert len(x) == len(y)
     for k in range(len(y)):
