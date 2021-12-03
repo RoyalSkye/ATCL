@@ -76,6 +76,37 @@ def phi_loss(phi, logits, target, reduction='mean'):
     return loss
 
 
+"""
+    Below is the official implementation of ICML 2021 "Discriminative Complementary-Label Learning with Weighted Loss"
+    by Yi Gao et al.
+"""
+
+
+def non_k_softmax_loss(f, K, labels):
+    Q_1 = 1 - F.softmax(f, 1)
+    Q_1 = F.softmax(Q_1, 1)
+    labels = labels.long()
+    return F.nll_loss(Q_1.log(), labels.long())  # Equation(8) in paper
+
+
+def w_loss(f, K, labels):
+    loss_class = non_k_softmax_loss(f=f, K=K, labels=labels)
+    loss_w = w_loss_p(f=f, K=K, labels=labels)
+    final_loss = loss_class + loss_w  # Equation(11) in paper
+    return final_loss
+
+
+# weighted loss
+def w_loss_p(f, K, labels):
+    Q_1 = 1-F.softmax(f, 1)
+    Q = F.softmax(Q_1, 1)
+    q = torch.tensor(1.0) / torch.sum(Q_1, dim=1)
+    q = q.view(-1, 1).repeat(1, K)
+    w = torch.mul(Q_1, q)  # weight
+    w_1 = torch.mul(w, Q.log())
+    return F.nll_loss(w_1, labels.long())  # Equation(14) in paper
+
+
 def chosen_loss_c(f, K, labels, ccp, meta_method, reduction='mean'):
     class_loss_torch = None
     if meta_method == 'free':
@@ -90,4 +121,9 @@ def chosen_loss_c(f, K, labels, ccp, meta_method, reduction='mean'):
         final_loss = pc_loss(f=f, K=K, labels=labels)
     elif meta_method[:3] == "scl":
         final_loss = phi_loss(meta_method[4:], f, labels, reduction=reduction)
+    elif meta_method == 'l_uw':
+        final_loss = non_k_softmax_loss(f=f, K=K, labels=labels)
+    elif meta_method == 'l_w':
+        final_loss = w_loss(f=f, K=K, labels=labels)
+
     return final_loss, class_loss_torch

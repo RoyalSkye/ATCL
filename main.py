@@ -26,7 +26,7 @@ def complementary_learning(args, model, optimizer, partialY, seed):
                 loss = loss_fn(outputs, partialY[id].float())
             elif args.method in ['mae', 'mse', 'ce', 'gce', 'phuber_ce']:
                 loss = unbiased_estimator(loss_fn, outputs, partialY[id].float())
-            elif args.cl_num == 1 and args.method in ['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp', 'scl_nl']:
+            elif args.cl_num == 1 and args.method in ['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp', 'scl_nl', 'l_uw', 'l_w']:
                 loss, loss_vector = chosen_loss_c(f=outputs, K=K, labels=cl_labels, ccp=ccp, meta_method=args.method)
             if args.method == 'ga':
                 if torch.min(loss_vector).item() < 0:
@@ -73,6 +73,8 @@ def complementary_learning(args, model, optimizer, partialY, seed):
     print(">> AVG test acc of last 10 epochs: {}".format(np.mean(test_acc_list[-10:])))
     epoch = [i for i in range(args.epochs)]
     show([epoch] * 2, [train_acc_list, test_acc_list], label=["train acc", "test acc"], title=args.dataset, xdes="Epoch", ydes="Accuracy", path=os.path.join(args.out_dir, "cl_acc_seed{}.png".format(seed)))
+
+    return np.mean(test_acc_list[-10:])
 
 
 def lr_schedule(lr, epoch, optimizer):
@@ -154,7 +156,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, default="mnist", choices=['mnist', 'kuzushiji', 'fashion', 'cifar10'],
                         help="dataset, choose from mnist, kuzushiji, fashion, cifar10")
     parser.add_argument('--method', type=str, default='exp', choices=['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp',
-                        'scl_nl', 'mae', 'mse', 'ce', 'gce', 'phuber_ce', 'log', 'exp'])
+                        'scl_nl', 'mae', 'mse', 'ce', 'gce', 'phuber_ce', 'log', 'exp', 'l_uw', 'l_w'])
     parser.add_argument('--model', type=str, default='mlp', choices=['linear', 'mlp', 'cnn', 'resnet18', 'resnet34', 'densenet', 'wrn'], help='model name')
     parser.add_argument('--epochs', default=300, type=int, help='number of epochs')
     parser.add_argument('--weight_decay', type=float, default=1e-4, help='weight decay')
@@ -177,8 +179,9 @@ if __name__ == "__main__":
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
+    res_list = []
     for seed in args.seed:
-        print(">> dataset: {}, cl_num: {}, model: {}, lr: {}, weight_decay: {}, seed: {}".format(args.dataset, args.cl_num, args.model, args.lr, args.weight_decay, seed))
+        print(">> dataset: {}, cl_num: {}, model: {}, method: {}, lr: {}, weight_decay: {}, seed: {}".format(args.dataset, args.cl_num, args.model, args.method, args.lr, args.weight_decay, seed))
         if args.at:
             print(">> epsilon: {}, step_size: {}, num_steps: {}".format(args.epsilon, args.step_size, args.num_steps))
         random.seed(seed)
@@ -211,4 +214,7 @@ if __name__ == "__main__":
 
         # complementary learning, ref to "Complementary-label learning for arbitrary losses and models"
         print(">> Learning with Complementary Labels")
-        complementary_learning(args, model, optimizer, partialY, seed)
+        avg_test_acc = complementary_learning(args, model, optimizer, partialY, seed)
+        res_list.append(avg_test_acc)
+
+    print("\n>> Final Results: {}({})\n".format(round(np.mean(res_list), 2), round(np.std(res_list, ddof=0), 2)))

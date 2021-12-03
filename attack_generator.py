@@ -43,7 +43,7 @@ def adv_cl(args, model, data, target, true_labels, id, ccp, partialY, loss_fn, c
                 loss_adv = loss_fn(output, partialY[id].float())
             elif args.method in ['mae', 'mse', 'ce', 'gce', 'phuber_ce']:
                 loss_adv = unbiased_estimator(loss_fn, output, partialY[id].float())
-            elif args.cl_num == 1 and args.method in ['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp', 'scl_nl']:
+            elif args.cl_num == 1 and args.method in ['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp', 'scl_nl', 'l_uw', 'l_w']:
                 loss_adv, _ = chosen_loss_c(f=output, K=output.size(-1), labels=target, ccp=ccp, meta_method=args.method)
         loss_adv.backward()
         eta = step_size * x_adv.grad.sign()
