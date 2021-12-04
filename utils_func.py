@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def show(x, y, label, title, xdes, ydes, path, x_scale="linear", dpi=150):
+def show(x, y, label, title, xdes, ydes, path, x_scale="linear", dpi=300):
     plt.style.use('ggplot')
     plt.figure(figsize=(10, 8))
     colors = ['tab:green', 'tab:orange', 'tab:blue', 'tab:red', 'tab:cyan',
@@ -49,14 +49,14 @@ def stat(x_to_mcls, x_to_tls):
     return wrong_cl_count/len(x_to_mcls), correct_cl_count/len(x_to_mcls)
 
 
-def show_std(x, y, label, title, xdes, ydes, path, x_scale="linear", dpi=150):
+def show_std(x, y, label, title, xdes, ydes, path, x_scale="linear", dpi=300):
     """
         input: x/y: e.g.: [[exp1, exp2, exp3], [at1, at2, at3], ...]
     """
     plt.style.use('ggplot')
     plt.figure(figsize=(10, 8))
     colors = ['tab:green', 'tab:orange', 'tab:blue', 'tab:olive', 'tab:cyan',
-              'tab:gray', 'tab:pink', 'tab:brown', 'tab:red', 'tab:purple']
+              'tab:gray', 'tab:brown', 'tab:purple', 'tab:red', 'tab:pink']
 
     assert len(x) == len(y)
     for k in range(len(y)):

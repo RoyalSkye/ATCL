@@ -217,4 +217,5 @@ if __name__ == "__main__":
         avg_test_acc = complementary_learning(args, model, optimizer, partialY, seed)
         res_list.append(avg_test_acc)
 
+    print(res_list)
     print("\n>> Final Results: {}({})\n".format(round(np.mean(res_list), 2), round(np.std(res_list, ddof=0), 2)))
