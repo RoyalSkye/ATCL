@@ -1,112 +1,46 @@
-### Learning with Complementary Labels
+## Adversarial Training with Complementary Labels
 
-#### Run
+### Run
+
 ```shell
-# EXP
-CUDA_VISIBLE_DEVICES=0 nohup python -u main.py --dataset 'kuzushiji' --cl_num=1 --method 'exp' 2>&1 &
-# EXP+AT
-CUDA_VISIBLE_DEVICES=1 nohup python -u main.py --dataset 'kuzushiji' --cl_num=1 --method 'exp' --at 2>&1 &
+# For MNIST/Fashion/KMNIST
+CUDA_VISIBLE_DEVICES=0 nohup python -u main.py --dataset 'kuzushiji' --method 'exp' --epochs=100 --adv_epochs=300 2>&1 & 
+# For CIFAR10
+CUDA_VISIBLE_DEVICES=0 nohup python -u main.py --dataset 'cifar10' --method 'exp' --epochs=50 --adv_epochs=100 2>&1 & 
 ```
 
-#### Results
-
-> Setting: All experimentsare under uniform assumption. For MNIST, Fashion-MNIST, and Kuzushiji- MNIST,  a MLP model (d − 500 − 10) was trained for 300 epochs. Weight decay of 1e − 4 for weight parameters and learning rate of 5e − 5 for Adam was used. For CIFAR-10, DenseNet and ResNet- 34 were used with weight decay of 5e − 4 and initial learning rate of 1e − 2. For optimization, stochastic gradient descent was used with the momentum set to 0.9. Learning rate was halved every 30 epochs.
-
-##### Exp 1: Single Complementary Label
-
-<p align="center">  
-  <img src="./imgs/mnist.png" alt="mnist" width="250" />
-	<img src="./imgs/fashion.png" alt="fashion" width="250" />
-	<img src="./imgs/kuzushiji.png" alt="kuzushiji" width="250" /></br>
-</p>
-
-
-|           |  ***MNIST***   |  ***Fashion***  | ***Kuzushiji*** |
-| :-------: | :------------: | :-------------: | :-------------: |
-|    EXP    |  93.32(0.03)   |   83.68(0.23)   |   65.46(1.1)    |
-|    LOG    |  93.37(0.08)   |   83.73(0.2)    |   66.41(0.44)   |
-|    MAE    |  92.75(0.12)   |   77.61(4.08)   |   63.35(0.13)   |
-|    MSE    |   81.8(0.35)   |   77.84(0.1)    |   53.51(0.4)    |
-|    GCE    |  87.85(0.21)   |   81.13(0.31)   |   59.49(1.05)   |
-| Phuber-CE |  75.79(0.73)   |   71.53(0.76)   |   43.88(0.55)   |
-|    CCE    |  76.28(0.32)   |   69.12(1.09)   |   53.08(0.14)   |
-|   Free    |   76.45(0.1)   |   70.48(0.87)   |   52.7(0.21)    |
-|    PC     |  84.32(0.74)   |   76.28(0.66)   |   59.0(0.79)    |
-|  Forward  |  93.56(0.09)   |   83.66(0.17)   |   67.02(0.46)   |
-|    GA     |  92.75(0.07)   |   81.49(0.22)   |   70.44(0.26)   |
-|    NN     |  89.67(0.24)   |   77.27(0.32)   |   63.37(0.28)   |
-|  SCL_EXP  |   93.44(0.1)   |   83.64(0.25)   |   65.96(1.02)   |
-|  SCL_NL   |  93.58(0.07)   |   83.61(0.15)   |   67.0(0.49)    |
-|   L-UW    |  92.88(0.12)   |   83.25(0.21)   |   66.09(0.12)   |
-|    L-W    |  92.57(0.11)   |   82.99(0.19)   |   67.02(2.36)   |
-| EXP+AT20. |  97.04(0.04)   |   84.28(0.09)   | **81.21(0.26)** |
-| LOG+AT20. | **97.06(0.1)** | **84.84(0.14)** |   81.18(0.49)   |
-
-##### Exp 2: Multiple Complementary Labels
-
-|               |       s=1       |       s=2       |       s=3       |       s=4       |       s=5       |       s=6       |       s=7       |       s=8       |
-| :-----------: | :-------------: | :-------------: | :-------------: | :-------------: | :-------------: | :-------------: | :-------------: | :-------------: |
-|  ***MNIST***  |                 |                 |                 |                 |                 |                 |                 |                 |
-|      EXP      |   93.32(0.03)   |   95.39(0.11)   |   96.3(0.07)    |   96.91(0.07)   |   97.26(0.11)   |   97.55(0.1)    |   97.77(0.02)   |   97.94(0.05)   |
-|      LOG      |   93.37(0.08)   |   95.34(0.17)   |   96.37(0.11)   |   97.0(0.09)    |   97.45(0.07)   |   97.78(0.08)   |   97.98(0.04)   |   98.12(0.02)   |
-|   EXP+AT20.   |   97.04(0.04)   |   97.73(0.06)   |   98.0(0.06)    |   98.1(0.06)    |   98.24(0.05)   |   98.27(0.06)   |   98.42(0.05)   |   98.41(0.02)   |
-|   LOG+AT20.   | **97.06(0.1)**  | **97.79(0.03)** | **98.14(0.09)** | **98.26(0.07)** | **98.41(0.07)** | **98.51(0.03)** | **98.59(0.02)** | **98.68(0.03)** |
-| ***Fashion*** |                 |                 |                 |                 |                 |                 |                 |                 |
-|      EXP      |   83.68(0.23)   |   85.36(0.13)   |   86.16(0.1)    |   86.67(0.05)   |   87.09(0.09)   |   87.42(0.1)    |   87.75(0.12)   |   87.98(0.08)   |
-|      LOG      |   83.73(0.2)    |   85.45(0.25)   |   86.35(0.12)   |   87.36(0.1)    |   87.78(0.04)   |   88.42(0.03)   |   88.66(0.1)    |   89.22(0.06)   |
-|   EXP+AT20.   |   84.28(0.09)   |   84.95(0.07)   |   85.29(0.2)    |   85.38(0.15)   |   85.59(0.15)   |   85.61(0.1)    |   85.75(0.08)   |   85.93(0.06)   |
-|   LOG+AT20.   |   84.84(0.14)   |   85.77(0.17)   |   86.37(0.11)   |   86.67(0.03)   |   87.03(0.08)   |   87.36(0.12)   |   87.52(0.09)   |   87.68(0.08)   |
-|   EXP+AT10.   |   85.36(0.13)   |   86.34(0.09)   |   86.89(0.23)   |   87.0(0.03)    |   87.17(0.19)   |    87.4(0.1)    |   87.54(0.05)   |   87.69(0.13)   |
-|   LOG+AT10.   | **85.96(0.13)** | **87.09(0.07)** | **87.72(0.13)** | **88.2(0.13)**  | **88.38(0.06)** | **88.79(0.09)** | **89.0(0.09)**  | **89.23(0.17)** |
-| EXP+AT20.-6.  |   84.28(0.09)   |   85.28(0.06)   |   86.02(0.28)   |   86.31(0.13)   |   86.98(0.17)   |    87.4(0.1)    |   88.01(0.07)   |   88.42(0.04)   |
-| **Kuzushiji** |                 |                 |                 |                 |                 |                 |                 |                 |
-|      EXP      |   65.46(1.1)    |   70.61(0.22)   |   72.13(0.56)   |   78.95(2.57)   |   80.8(2.62)    |   86.9(0.38)    |   86.42(2.64)   |   89.57(0.1)    |
-|      LOG      |   66.41(0.44)   |   71.36(0.4)    |   76.95(2.06)   |   82.04(2.96)   |   86.15(0.48)   |   88.12(0.42)   |   89.35(0.11)   |   90.28(0.09)   |
-|   EXP+AT20.   | **81.21(0.26)** |   82.18(2.96)   |   86.11(2.75)   |   84.74(2.72)   |   83.12(0.24)   |   83.74(0.16)   |   83.6(0.67)    |   83.55(0.34)   |
-|   LOG+AT20.   |   81.18(0.49)   | **85.02(1.38)** | **88.66(0.16)** | **89.86(0.18)** | **90.4(0.15)**  | **91.38(0.13)** | **91.65(0.05)** | **92.2(0.07)**  |
-
-##### Exp3: Ablation Study: 
-
->  Single Complementary Label, num_steps=1, epsilon=step_size=$\theta$
+> Setting: All experiments are under single CL with uniform assumption. For MNIST, Fashion-MNIST, and Kuzushiji-MNIST, a MLP model (d−500−10) was trained for 100(CL)+300(Adv) epochs. For learning with complementary labels (CL), weight decay of 1e−4 for weight parameters and learning rate of 5e−5 for Adam was used. For adversarial training, only learning rate was changed to 1e-3, and is divided by 10 at 150th and 250th epoch. The batch size is 256. 
 >
-> Note: The capacity of linear model is not enough for +AT.
+> For CIFAR-10, ResNet18 and WRN-32-10 were trained for 50(CL)+100(Adv) epochs. For learning with complementary labels (CL), weight decay of 5e−4 and initial learning rate of 1e−2 for SGD was used, with the momentum set to 0.9. Learning rate was halved every 30 epochs. For adversarial training, only the learning rate was changed to 0.1, and is divided by 10 at 50th and 75th epoch. The batch size is 128.
 
-<p align="center">  
-  <img src="./imgs/ablation_kuzushiji.png" alt="ablation" width="350" />
-	<img src="./imgs/epsilon.png" alt="epsilon" width="350" /></br>
-</p>
+|              Last / Best              | Natural Test Acc |      PGD20      |       CW        |
+| :-----------------------------------: | :--------------: | :-------------: | :-------------: |
+|            ***Kuzushiji***            |                  |                 |                 |
+|      two_stage baseline (64.23%)      |   39.78/39.72    |   31.03/31.23   |   28.11/28.39   |
+|          two_stage sample pl          |   42.99/42.99    |   31.89/32.52   |   28.14/27.82   |
+|    two_stage argmax_weight min_ce     |   41.52/41.51    |   31.80/32.34   |   28.56/28.33   |
+|    two_stage argmax_weight max_ce     |   41.54/41.49    |   31.97/32.47   |   27.92/27.76   |
+| two_stage argmax_weight min_ce_max_ce |   41.27/41.25    |   32.25/32.62   |   29.34/30.01   |
+|  two_stage mixup max_pl with min_cl   |   46.27/46.17    |   34.79/35.29   |   30.88/30.81   |
+|      two_stage mixup top-2 class      |   45.30/45.33    |   34.54/35.13   |   31.04/30.72   |
+|       two_stage mixup 10 class        |   47.44/47.45    |   35.18/35.72   |   30.48/30.48   |
+|       two_stage sample pl (exp)       |        F         |        F        |        F        |
+|       two_stage sample pl (log)       |        F         |        F        |        F        |
+|      two_stage sample pl (p**2)       |   42.86/42.79    |   33.38/33.66   |   29.40/29.53   |
+|                                       |                  |                 |                 |
+|             ***Fashion***             |                  |                 |                 |
+|      two_stage baseline (83.75%)      |   63.76/63.66    |   52.17/52.91   |   47.13/47.67   |
+|          two_stage sample pl          |   63.62/63.90    |   52.97/53.70   |   47.63/47.97   |
+|  two_stage mixup max_pl with min_cl   |   67.87/67.82    | **55.34/56.09** | **51.08/50.54** |
+|      two_stage mixup top-2 class      |   67.22/67.20    |   53.39/53.70   |   46.72/46.07   |
+|       two_stage mixup 10 class        |                  |                 |                 |
+|      two_stage sample pl (p**2)       |   64.65/64.81    |   53.31/53.78   |   47.94/47.62   |
+|                                       |                  |                 |                 |
+|             ***CIFAR10***             |                  |                 |                 |
+|        two_stage baseline (X%)        |                  |                 |                 |
+|  two_stage mixup max_pl with min_cl   |                  |                 |                 |
 
 
-|          |      MNIST      |     Fashion     |    Kuzushiji    |                 |                 |       3CL       |       5CL       |       7CL       |
-| :------: | :-------------: | :-------------: | :-------------: | :-------------: | :-------------: | :-------------: | :-------------: | :-------------: |
-|          |     EXP+AT      |     EXP+AT      |     EXP+AT      |     LOG+AT      | EXP+AT (linear) |     EXP+AT      |     EXP+AT      |     EXP+AT      |
-| Baseline |   93.32(0.03)   |   83.68(0.23)   |   65.46(1.1)    |   66.41(0.44)   |   61.23(0.22)   |   72.13(0.56)   |   80.8(2.62)    |   86.42(2.64)   |
-|  1/255   |   93.48(0.15)   |   84.25(0.16)   |   66.42(1.04)   |   67.52(0.21)   |   61.3(0.19)    |   73.02(0.67)   |   79.35(0.48)   |   86.72(2.81)   |
-|  4/255   |   94.62(0.25)   |   85.17(0.03)   |   70.09(0.5)    |   71.11(0.42)   | **61.39(0.11)** |   76.75(0.22)   |   83.44(2.45)   | **87.79(2.77)** |
-|  8/255   |   95.67(0.13)   | **85.42(0.07)** |   72.84(0.73)   |   73.55(0.27)   |   60.72(0.07)   |   80.89(1.7)    |   84.38(2.58)   |   86.43(2.9)    |
-|  12/255  |                 |                 |   74.36(0.41)   |                 |                 |   80.34(1.05)   | **84.92(2.72)** |   84.33(0.21)   |
-|  16/255  |   96.8(0.03)    |   84.88(0.04)   |   76.96(2.93)   |   80.91(0.39)   |   54.84(0.2)    |   85.24(2.45)   |   83.23(0.2)    |   83.92(0.61)   |
-|  20/255  |   97.04(0.04)   |   84.28(0.09)   | **81.21(0.26)** |                 |                 |   86.11(2.75)   |   83.12(0.24)   |   83.6(0.67)    |
-|  24/255  | **97.25(0.04)** |   84.04(0.42)   |   80.91(0.79)   | **81.13(0.34)** |   48.14(0.67)   | **87.54(0.62)** |   82.86(0.21)   |   82.77(0.55)   |
-|  28/255  |                 |                 |   80.21(1.0)    |                 |                 |   87.52(0.59)   |   84.39(2.59)   |   81.84(0.19)   |
-|  32/255  |   96.01(0.05)   |   84.5(0.13)    |   79.47(0.42)   |   80.25(0.28)   |   14.88(3.01)   |   87.11(0.37)   | **85.72(2.65)** |   81.38(0.6)    |
-|  36/255  |                 |                 |   78.10(0.5)    |                 |                 |                 |                 |                 |
-|  40/255  |                 |                 |   76.32(0.13)   |                 |                 |                 |                 |                 |
-|  44/255  |                 |                 |   74.70(1.75)   |                 |                 |                 |                 |                 |
-|  48/255  |                 |                 |   62.58(7.92)   |                 |                 |                 |                 |                 |
-|  64/255  |                 |   79.95(3.46)   |   64.38(4.47)   |                 |                 |                 |                 |                 |
-
-
-
-| Kuzushiji / 16/255 / 1CL |                 |
-| :----------------------: | :-------------: |
-|           EXP            |   65.46(1.1)    |
-|     EXP+AT (random)      |   65.17(1.11)   |
-|     EXP+AT (max_EXP)     | **76.96(2.93)** |
-|     EXP+AT (min_EXP)     |   62.55(0.61)   |
-|     EXP+AT (max_LOG)     |   74.53(0.26)   |
-|     EXP+AT (min_LOG)     |   63.99(0.84)   |
-|  EXP+AT (min/max_ce_cl)  |        F        |
 
 #### Reference
 

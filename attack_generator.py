@@ -21,7 +21,7 @@ def cwloss(output, target, confidence=50, num_classes=10):
     return loss
 
 
-def adv_cl(args, model, data, target, true_labels, id, ccp, partialY, loss_fn, category="Madry", rand_init=True):
+def cl_adv(args, model, data, target, true_labels, id, ccp, partialY, loss_fn, category="Madry", rand_init=True):
     model.eval()
     epsilon, step_size, num_steps = args.epsilon, args.step_size, args.num_steps
     y_adv, bs = true_labels, true_labels.size(0)
