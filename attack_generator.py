@@ -6,6 +6,18 @@ from utils_mcl_loss import *
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def trades_loss(adv_logits, natural_logits, target, beta):
+    """
+        Based on the repo TREADES: https://github.com/yaodongyu/TRADES
+    """
+    batch_size = len(target)
+    criterion_kl = nn.KLDivLoss(size_average=False).cuda()
+    loss_natural = nn.CrossEntropyLoss(reduction='mean')(natural_logits, target)
+    loss_robust = (1.0 / batch_size) * criterion_kl(F.log_softmax(adv_logits, dim=1), F.softmax(natural_logits, dim=1))
+    loss = loss_natural + beta * loss_robust
+    return loss
+
+
 def cwloss(output, target, confidence=50, num_classes=10):
     # Compute the probability of the label class versus the maximum other
     # The same implementation as in repo CAT https://github.com/sunblaze-ucb/curriculum-adversarial-training-CAT
@@ -21,10 +33,8 @@ def cwloss(output, target, confidence=50, num_classes=10):
     return loss
 
 
-def cl_adv(args, model, data, target, true_labels, id, ccp, partialY, loss_fn, category="Madry", rand_init=True):
+def cl_adv(args, model, data, target, epsilon, step_size, num_steps, id, ccp, partialY, loss_fn, category="Madry", rand_init=True):
     model.eval()
-    epsilon, step_size, num_steps = args.epsilon, args.step_size, args.num_steps
-    y_adv, bs = true_labels, true_labels.size(0)
     if category == "trades":
         x_adv = data.detach() + 0.001 * torch.randn(data.shape).to(device).detach() if rand_init else data.detach()
     if category == "Madry":
@@ -35,8 +45,6 @@ def cl_adv(args, model, data, target, true_labels, id, ccp, partialY, loss_fn, c
     for k in range(num_steps):
         x_adv.requires_grad_()
         output = model(x_adv)
-        predict = torch.max(output.detach(), dim=1)[1]
-        y_adv = torch.cat((y_adv, predict))
         model.zero_grad()
         with torch.enable_grad():
             if args.method in ['exp', 'log']:
@@ -52,17 +60,14 @@ def cl_adv(args, model, data, target, true_labels, id, ccp, partialY, loss_fn, c
         x_adv = torch.min(torch.max(x_adv, data - epsilon), data + epsilon)
         x_adv = torch.clamp(x_adv, 0.0, 1.0)
     x_adv = Variable(x_adv, requires_grad=False)
-    y_adv = torch.cat((y_adv, target))
-    y_adv = y_adv.view(-1, bs).transpose(0, 1)
 
-    return x_adv, y_adv
+    return x_adv
 
 
 def pgd(model, data, target, epsilon, step_size, num_steps, loss_fn, category, rand_init, num_classes=10):
     model.eval()
     if category == "trades":
         x_adv = data.detach() + 0.001 * torch.randn(data.shape).to(device).detach() if rand_init else data.detach()
-        nat_output = model(data)
     if category == "Madry":
         x_adv = data.detach() + torch.from_numpy(np.random.uniform(-epsilon, epsilon, data.shape)).float().to(device) if rand_init else data.detach()
         x_adv = torch.clamp(x_adv, 0.0, 1.0)
@@ -77,7 +82,7 @@ def pgd(model, data, target, epsilon, step_size, num_steps, loss_fn, category, r
                 loss_adv = cwloss(output, target, num_classes=num_classes)
             if loss_fn == "kl":
                 criterion_kl = nn.KLDivLoss(reduction="mean").cuda()
-                loss_adv = criterion_kl(F.log_softmax(output, dim=1), F.softmax(nat_output, dim=1))
+                loss_adv = criterion_kl(F.log_softmax(output, dim=1), F.softmax(model(data), dim=1))
         loss_adv.backward()
         eta = step_size * x_adv.grad.sign()
         # Update adversarial data

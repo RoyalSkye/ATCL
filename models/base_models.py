@@ -4,6 +4,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as dsets
 from torch.autograd import Variable
 import torch.nn.functional as F
+from collections import OrderedDict
 
 
 class linear_model(nn.Module):
@@ -69,62 +70,52 @@ class cnn_mnist(nn.Module):
         return x
 
 
-class cnn(nn.Module):
+class SmallCNN(nn.Module):
     """
-        4.43 million vs. resnet18 11.17 million
+        From https://github.com/yaodongyu/TRADES/blob/master/models/small_cnn.py
     """
-    def __init__(self, input_channel=3, num_classes=10, dropout_rate=0.25, top_bn=False):
-        super(cnn, self).__init__()
-        self.dropout_rate = dropout_rate
-        self.top_bn = top_bn
-        self.c1 = nn.Conv2d(input_channel, 128, kernel_size=3, stride=1, padding=1)
-        self.c2 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1)
-        self.c3 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1)
-        self.c4 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
-        self.c5 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-        self.c6 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-        self.c7 = nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=0)
-        self.c8 = nn.Conv2d(512, 256, kernel_size=3, stride=1, padding=0)
-        self.c9 = nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=0)
-        self.l_c1 = nn.Linear(128, num_classes)
-        self.bn1 = nn.BatchNorm2d(128)
-        self.bn2 = nn.BatchNorm2d(128)
-        self.bn3 = nn.BatchNorm2d(128)
-        self.bn4 = nn.BatchNorm2d(256)
-        self.bn5 = nn.BatchNorm2d(256)
-        self.bn6 = nn.BatchNorm2d(256)
-        self.bn7 = nn.BatchNorm2d(512)
-        self.bn8 = nn.BatchNorm2d(256)
-        self.bn9 = nn.BatchNorm2d(128)
+    def __init__(self, drop=0.5):
+        super(SmallCNN, self).__init__()
 
-    def forward(self, x,):
-        h = x
-        h = self.c1(h)
-        h = F.leaky_relu(self.bn1(h), negative_slope=0.01)
-        h = self.c2(h)
-        h = F.leaky_relu(self.bn2(h), negative_slope=0.01)
-        h = self.c3(h)
-        h = F.leaky_relu(self.bn3(h), negative_slope=0.01)
-        h = F.max_pool2d(h, kernel_size=2, stride=2)
-        h = F.dropout2d(h, p=self.dropout_rate)
+        self.num_channels = 1
+        self.num_labels = 10
 
-        h = self.c4(h)
-        h = F.leaky_relu(self.bn4(h), negative_slope=0.01)
-        h = self.c5(h)
-        h = F.leaky_relu(self.bn5(h), negative_slope=0.01)
-        h = self.c6(h)
-        h = F.leaky_relu(self.bn6(h), negative_slope=0.01)
-        h = F.max_pool2d(h, kernel_size=2, stride=2)
-        h = F.dropout2d(h, p=self.dropout_rate)
+        activ = nn.ReLU(True)
 
-        h = self.c7(h)
-        h = F.leaky_relu(self.bn7(h), negative_slope=0.01)
-        h = self.c8(h)
-        h = F.leaky_relu(self.bn8(h), negative_slope=0.01)
-        h = self.c9(h)
-        h = F.leaky_relu(self.bn9(h), negative_slope=0.01)
-        h = F.avg_pool2d(h, kernel_size=h.data.shape[2])
+        self.feature_extractor = nn.Sequential(OrderedDict([
+            ('conv1', nn.Conv2d(self.num_channels, 32, 3)),
+            ('relu1', activ),
+            ('conv2', nn.Conv2d(32, 32, 3)),
+            ('relu2', activ),
+            ('maxpool1', nn.MaxPool2d(2, 2)),
+            ('conv3', nn.Conv2d(32, 64, 3)),
+            ('relu3', activ),
+            ('conv4', nn.Conv2d(64, 64, 3)),
+            ('relu4', activ),
+            ('maxpool2', nn.MaxPool2d(2, 2)),
+        ]))
 
-        emb = h.view(h.size(0), h.size(1))
-        logit = self.l_c1(emb)
-        return logit
+        self.classifier = nn.Sequential(OrderedDict([
+            ('fc1', nn.Linear(64 * 4 * 4, 200)),
+            ('relu1', activ),
+            ('drop', nn.Dropout(drop)),
+            ('fc2', nn.Linear(200, 200)),
+            ('relu2', activ),
+            ('fc3', nn.Linear(200, self.num_labels)),
+        ]))
+
+        for m in self.modules():
+            if isinstance(m, (nn.Conv2d)):
+                nn.init.kaiming_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+        nn.init.constant_(self.classifier.fc3.weight, 0)
+        nn.init.constant_(self.classifier.fc3.bias, 0)
+
+    def forward(self, input):
+        features = self.feature_extractor(input)
+        logits = self.classifier(features.view(-1, 64 * 4 * 4))
+        return logits
