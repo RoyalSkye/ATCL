@@ -1,11 +1,11 @@
 import argparse, time, os, random, math
+import pprint as pp
 from utils_data import *
 from utils_algo import *
 from utils_mcl_loss import *
 from models import *
 from attack_generator import *
 from utils_func import *
-import torchvision
 
 
 def one_stage_adversarial_train(args, model, optimizer, seed):
@@ -18,33 +18,28 @@ def one_stage_adversarial_train(args, model, optimizer, seed):
     nature_test_acc_list, pgd20_acc_list, cw_acc_list = [], [], []
     first_layer_grad, last_layer_grad = [], []
     for epoch in range(args.adv_epochs):
-        # p = torch.empty(0).to(device)
         lr = adv_lr_schedule(lr, epoch + 1, optimizer)
         for batch_idx, (images, cl_labels, true_labels, id) in enumerate(complementary_train_loader):
             images, cl_labels, true_labels = images.to(device), cl_labels.to(device), true_labels.to(device)
             epsilon, step_size, num_steps = at_param_schedule(args, epoch + 1)
 
-            # pseudo_labels, prob = get_pred(model, images.detach())
-            # p = torch.cat((p, prob[torch.arange(cl_labels.size(0)), true_labels]))
-            # x_adv = torch.zeros_like(images).to(device)
-            # prob, _ = torch.max(prob, dim=1)
-            # id1 = torch.arange(cl_labels.size(0))[prob > 0.9]
-            # id2 = torch.arange(cl_labels.size(0))[prob <= 0.9]
-            # x_adv[id1] = pgd(model, images[id1], pseudo_labels[id1], epsilon, step_size, num_steps, loss_fn="cent", category="Madry", rand_init=True, num_classes=K)  # max_ce
-            # x_adv[id2] = pgd(model, images[id2], None, epsilon, step_size, num_steps, loss_fn="kl", category="trades", rand_init=True, num_classes=K)  # max_kl
-
-            # x_adv = pgd(model, images, None, epsilon, step_size, num_steps, loss_fn="kl", category="trades", rand_init=True, num_classes=K)  # trades
-            x_adv = cl_adv(args, model, images, cl_labels, epsilon, step_size, num_steps, id, ccp, partialY, loss_fn, category="Madry", rand_init=True)
+            # x_adv = pgd(model, images, true_labels, epsilon, step_size, num_steps, loss_fn="cent", category="Madry", rand_init=True, num_classes=K)  # mex_ce_tl
+            # x_adv = pgd(model, images, None, epsilon, step_size, num_steps, loss_fn="kl", category="trades", rand_init=True, num_classes=K)  # max_trades
+            x_adv = cl_adv(args, model, images, cl_labels, epsilon, step_size, num_steps, id, ccp, partialY, loss_fn, category="Madry", rand_init=True)  # max_cl
 
             model.train()
             optimizer.zero_grad()
             logit = model(x_adv)
-            if args.method in ['forward', 'scl_exp', 'scl_nl', 'l_uw', 'l_w']:
-                loss, _ = chosen_loss_c(f=logit, K=K, labels=cl_labels, ccp=ccp, meta_method=args.method)
-            elif args.method in ['exp', 'log']:
+            if args.method in ['exp', 'log']:
                 loss = loss_fn(logit, partialY[id].float())
+            elif args.method in ['mae', 'mse', 'ce', 'gce', 'phuber_ce']:
+                loss = unbiased_estimator(loss_fn, logit, partialY[id].float())
+            elif args.method in ['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp', 'scl_nl', 'l_uw', 'l_w']:
+                assert args.cl_num == 1
+                loss, _ = chosen_loss_c(f=logit, K=K, labels=cl_labels, ccp=ccp, meta_method=args.method)
             loss.backward()
             # the grad stat
+            assert args.model == "cnn", "please modify grad stat code!"
             first_layer_grad.append(model.module.feature_extractor.conv1.weight.grad.norm(p=2).cpu().item())
             last_layer_grad.append(model.module.classifier.fc3.weight.grad.norm(p=2).cpu().item())
             optimizer.step()
@@ -57,9 +52,7 @@ def one_stage_adversarial_train(args, model, optimizer, seed):
         nature_test_acc_list.append(test_nat_acc)
         pgd20_acc_list.append(test_pgd20_acc)
         cw_acc_list.append(test_cw_acc)
-
         print(epsilon, step_size, num_steps)
-        # print(torch.histc(p.cpu(), bins=10, min=0, max=1))
         print('Epoch: [%d | %d] | Learning Rate: %f | Natural Test Acc %.4f | PGD20 Test Acc %.4f | CW Test Acc %.4f |\n' % (epoch + 1, args.adv_epochs, lr, test_nat_acc, test_pgd20_acc, test_cw_acc))
 
         # Save the best checkpoint
@@ -94,9 +87,17 @@ def one_stage_adversarial_train(args, model, optimizer, seed):
     print(">> Finished Adv Training: PGD20 Test Acc | Last_checkpoint %.4f | Best_checkpoint %.4f |\n" % (test_pgd20_acc, best_pgd20_acc))
     print(">> Finished Adv Training: CW Test Acc | Last_checkpoint %.4f | Best_checkpoint %.4f |\n" % (test_cw_acc, best_cw_acc))
     epoch = [i for i in range(args.adv_epochs)]
-    show([epoch, epoch, epoch], [nature_test_acc_list, pgd20_acc_list, cw_acc_list], label=["nature test acc", "pgd20 acc", "cw acc"], title=args.dataset, xdes="Epoch", ydes="Test Accuracy", path=os.path.join(args.out_dir, "adv_test_acc_seed{}.png".format(seed)))
+    show([epoch, epoch, epoch], [nature_test_acc_list, pgd20_acc_list, cw_acc_list], label=["nature test acc", "pgd20 acc", "cw acc"],
+         title=args.dataset, xdes="Epoch", ydes="Test Accuracy", path=os.path.join(args.out_dir, "adv_test_acc_seed{}.png".format(seed)))
     print("first_layer [:2500] iter: \n{} \nfirst_layer [-2500:] iter: \n{} \nlast_layer [:2500] iter: \n{} \nlast_layer [-2500:] iter: \n{}".format(
-            first_layer_grad[:2500], first_layer_grad[-2500:], last_layer_grad[:2500], last_layer_grad[-2500:]), file=open("grad.out", "a+"))
+            first_layer_grad[:2500], first_layer_grad[-2500:], last_layer_grad[:2500], last_layer_grad[-2500:]), file=open(os.path.join(args.out_dir, "grad_seed{}.out".format(seed)), "a+"))
+    # Auto-attack
+    aa_eval(args, model, filename="aa_last.txt")
+    best_checkpoint = torch.load(os.path.join(args.out_dir, "best_checkpoint_seed{}.pth.tar".format(seed)))
+    model.load_state_dict(best_checkpoint['state_dict'])
+    aa_eval(args, model, filename="aa_best.txt")
+
+    return [test_nat_acc, test_pgd20_acc, test_cw_acc], [best_nat_acc, best_pgd20_acc, best_cw_acc]
 
 
 def two_stage_adversarial_train(args, model, optimizer, seed):
@@ -108,7 +109,7 @@ def two_stage_adversarial_train(args, model, optimizer, seed):
     lr, best_nat_acc, best_pgd20_acc, best_cw_acc, best_epoch = args.at_lr, 0, 0, 0, 0
     nature_test_acc_list, pgd20_acc_list, cw_acc_list = [], [], []
     cl_model = torch.nn.DataParallel(create_model(args, input_dim, input_channel, K).to(device))
-    checkpoint = torch.load(os.path.join(args.out_dir, "cl_checkpoint_seed{}.pth.tar".format(seed)))
+    checkpoint = torch.load(os.path.join(args.out_dir, "cl_best_checkpoint_seed{}.pth.tar".format(seed)))
     cl_model.load_state_dict(checkpoint['state_dict'])
     cl_model.eval()
     print(">> Load the CL model with test acc: {}, epoch {}".format(checkpoint['test_acc'], checkpoint['epoch']))
@@ -119,20 +120,10 @@ def two_stage_adversarial_train(args, model, optimizer, seed):
             images, pseudo_labels = images.to(device), pseudo_labels.to(device)
             # 1. for two-stage baseline
             x_adv = pgd(model, images, pseudo_labels, args.epsilon, args.step_size, args.num_steps, loss_fn="cent", category="Madry", rand_init=True, num_classes=K)
-            # 2. sample pl based on prob
-            # prob = prob.double()
-            # prob = torch.where(prob > 0.1, prob, 0.)
-            # pseudo_labels = torch.multinomial(prob, 1).view(-1)
-            # x_adv = pgd(model, images, pseudo_labels, args.epsilon, args.step_size, args.num_steps, loss_fn="cent", category="Madry", rand_init=True, num_classes=K)
             model.train()
             optimizer.zero_grad()
             logit = model(x_adv)
             loss = nn.CrossEntropyLoss(reduction="mean")(logit, pseudo_labels)
-            # 3. argmax * p(y|x)
-            # w = prob[torch.arange(images.size(0)), pseudo_labels]
-            # normalized_w = w / w.sum()
-            # loss = nn.CrossEntropyLoss(reduction="none")(logit, pseudo_labels)
-            # loss = loss.mul(normalized_w).sum()
             loss.backward()
             optimizer.step()
 
@@ -179,7 +170,15 @@ def two_stage_adversarial_train(args, model, optimizer, seed):
     print(">> Finished Adv Training: PGD20 Test Acc | Last_checkpoint %.4f | Best_checkpoint %.4f |\n" % (test_pgd20_acc, best_pgd20_acc))
     print(">> Finished Adv Training: CW Test Acc | Last_checkpoint %.4f | Best_checkpoint %.4f |\n" % (test_cw_acc, best_cw_acc))
     epoch = [i for i in range(args.adv_epochs)]
-    show([epoch, epoch, epoch], [nature_test_acc_list, pgd20_acc_list, cw_acc_list], label=["nature test acc", "pgd20 acc", "cw acc"], title=args.dataset, xdes="Epoch", ydes="Test Accuracy", path=os.path.join(args.out_dir, "adv_test_acc_seed{}.png".format(seed)))
+    show([epoch, epoch, epoch], [nature_test_acc_list, pgd20_acc_list, cw_acc_list], label=["nature test acc", "pgd20 acc", "cw acc"],
+         title=args.dataset, xdes="Epoch", ydes="Test Accuracy", path=os.path.join(args.out_dir, "adv_test_acc_seed{}.png".format(seed)))
+    # Auto-attack
+    aa_eval(args, model, filename="aa_last.txt")
+    best_checkpoint = torch.load(os.path.join(args.out_dir, "best_checkpoint_seed{}.pth.tar".format(seed)))
+    model.load_state_dict(best_checkpoint['state_dict'])
+    aa_eval(args, model, filename="aa_best.txt")
+
+    return [test_nat_acc, test_pgd20_acc, test_cw_acc], [best_nat_acc, best_pgd20_acc, best_cw_acc]
 
 
 def complementary_learning(args, model, optimizer, partialY, seed):
@@ -267,9 +266,39 @@ def complementary_learning(args, model, optimizer, partialY, seed):
     return np.mean(test_acc_list[-10:])
 
 
+def aa_eval(args, model, filename):
+    """
+        AutoAttack evaluation - pip install git+https://github.com/fra31/auto-attack
+    """
+    from autoattack import AutoAttack
+    model.eval()
+    version, norm, individual, n_ex = "standard", "Linf", False, 10000
+    adversary = AutoAttack(model, norm=norm, eps=args.epsilon, log_path=os.path.join(args.out_dir, filename), version=version)
+
+    l = [x for (x, y) in test_loader]
+    x_test = torch.cat(l, 0)
+    l = [y for (x, y) in test_loader]
+    y_test = torch.cat(l, 0)
+
+    # run attack and save images
+    with torch.no_grad():
+        if not individual:
+            adv_complete = adversary.run_standard_evaluation(x_test[:n_ex], y_test[:n_ex], bs=500)
+            # torch.save({'adv_complete': adv_complete}, '{}/{}_{}_1_{}_eps_{:.5f}.pth'.format(args.out_dir, 'aa', version, adv_complete.shape[0], args.epsilon))
+        else:
+            # individual version, each attack is run on all test points
+            adv_complete = adversary.run_standard_evaluation_individual(x_test[:n_ex], y_test[:n_ex], bs=500)
+            # torch.save(adv_complete, '{}/{}_{}_individual_1_{}_eps_{:.5f}_plus_{}_cheap_{}.pth'.format(args.out_dir, 'aa', version, n_ex, args.epsilon))
+
+
 def at_param_schedule(args, epoch):
-    warmup_epoch = 50
-    eps = min(args.epsilon * (epoch / warmup_epoch), args.epsilon)
+    warmup_epoch = args.sch_epoch
+    if args.scheduler == "linear":
+        eps = min(args.epsilon * (epoch/warmup_epoch), args.epsilon)
+    elif args.scheduler == "cosine":
+        eps = 1/2 * (1-math.cos(math.pi * min((epoch/warmup_epoch), 1))) * args.epsilon
+    elif args.scheduler == "none":
+        eps = args.epsilon
     if epoch < warmup_epoch:
         # return eps, eps, 1
         return eps, args.step_size, args.num_steps
@@ -287,14 +316,7 @@ def cl_lr_schedule(lr, epoch, optimizer):
 
 def adv_lr_schedule(lr, epoch, optimizer):
     if args.dataset != "cifar10":
-        # 300 epochs for MLP
-        if args.model == "mlp":
-            if epoch == 250:
-                lr /= 10
-        # 100 epochs for CNN
-        if args.model == "cnn":
-            if epoch == 100:
-                lr /= 10
+        pass
     elif args.dataset == "cifar10":
         # 100 epochs for ResNet18/WRN32-10
         if epoch == 50:
@@ -350,10 +372,8 @@ def create_model(args, input_dim, input_channel, K):
         model = SmallCNN()
     elif args.model == 'resnet18':
         model = ResNet18(input_channel=input_channel, num_classes=K)
-    elif args.model == 'resnet34':
-        model = ResNet34(input_channel=input_channel, num_classes=K)
     elif args.model == 'densenet':
-        model = densenet(input_channel=input_channel, num_classes=K)
+        model = DenseNet121(input_channel=input_channel, num_classes=K)
     elif args.model == "wrn":
         model = Wide_ResNet_Madry(depth=32, num_classes=K, widen_factor=10, dropRate=0.0)  # WRN-32-10
 
@@ -380,17 +400,19 @@ if __name__ == "__main__":
                         help="dataset, choose from mnist, kuzushiji, fashion, cifar10")
     parser.add_argument('--method', type=str, default='exp', choices=['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp',
                         'scl_nl', 'mae', 'mse', 'ce', 'gce', 'phuber_ce', 'log', 'exp', 'l_uw', 'l_w'])
-    parser.add_argument('--model', type=str, default='cnn', choices=['linear', 'mlp', 'cnn', 'resnet18', 'resnet34', 'densenet', 'wrn'], help='model name')
+    parser.add_argument('--model', type=str, default='cnn', choices=['linear', 'mlp', 'cnn', 'resnet18', 'densenet', 'wrn'], help='model name')
     parser.add_argument('--epochs', default=0, type=int, help='number of epochs for cl learning')
-    parser.add_argument('--adv_epochs', default=120, type=int, help='number of epochs for adv')
+    parser.add_argument('--adv_epochs', default=100, type=int, help='number of epochs for adv')
     parser.add_argument('--weight_decay', type=float, default=1e-4, help='weight decay')
     parser.add_argument('--momentum', type=float, default=0.9, help='SGD momentum')
-    parser.add_argument('--seed', type=int, nargs='+', default=[1, ], help='random seed')
+    parser.add_argument('--seed', type=int, nargs='+', default=[1, 2, 3], help='random seed')
     parser.add_argument('--out_dir', type=str, default='./ATCL_result', help='dir of output')
     # for adv training
     parser.add_argument('--epsilon', type=float, default=0.3, help='perturbation bound')
     parser.add_argument('--num_steps', type=int, default=40, help='maximum perturbation step K')
     parser.add_argument('--step_size', type=float, default=0.01, help='step size')
+    parser.add_argument('--scheduler', type=str, default="linear", choices=['linear', 'cosine', 'none'], help='epsilon scheduler')
+    parser.add_argument('--sch_epoch', type=int, default=50, help='scheduler epoch')
     parser.add_argument('--clat', action='store_true', help="do one-step pgd during complementary label training, default: False")
     args = parser.parse_args()
 
@@ -399,13 +421,14 @@ if __name__ == "__main__":
         args.cl_lr, args.at_lr, args.model, args.weight_decay, args.batch_size = 1e-2, 1e-1, 'resnet18', 5e-4, 128
         args.epsilon, args.num_steps, args.step_size = 0.031, 10, 0.007
 
+    pp.pprint(vars(args))
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
+    last_nature, last_pgd20, last_cw, best_nature, best_pgd20, best_cw = [], [], [], [], [], []
     for seed in args.seed:
-        print(">> dataset: {}, cl_num: {}, model: {}, method: {}, lr: {}, weight_decay: {}, seed: {}".format(args.dataset, args.cl_num, args.model, args.method, args.cl_lr, args.weight_decay, seed))
-        print(">> epochs: {}, adv_epochs: {}, epsilon: {}, step_size: {}, num_steps: {}".format(args.epochs, args.adv_epochs, args.epsilon, args.step_size, args.num_steps))
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
@@ -431,11 +454,20 @@ if __name__ == "__main__":
             print('Epoch: 0. Train_Set Acc: {}. Test_Set Acc: {}'.format(train_accuracy, test_accuracy))
             avg_test_acc = complementary_learning(args, model, optimizer, partialY, seed)
 
-        # adversarial training
+        # adversarial training with complementary labels
         if args.adv_epochs > 0:
             model = create_model(args, input_dim, input_channel, K)
+            display_num_param(model)
             model = model.to(device)
             model = torch.nn.DataParallel(model)
             optimizer = torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum)
-            # two_stage_adversarial_train(args, model, optimizer, seed)
-            one_stage_adversarial_train(args, model, optimizer, seed)
+            # last_res, best_res = two_stage_adversarial_train(args, model, optimizer, seed)
+            last_res, best_res = one_stage_adversarial_train(args, model, optimizer, seed)
+
+    print(last_nature);print(last_pgd20);print(last_cw);print(best_nature);print(best_pgd20);print(best_cw)
+    print(">> Last Nature: {}({})".format(round(np.mean(last_nature), 2), round(np.std(last_nature, ddof=0), 2)))
+    print(">> Last PGD20: {}({})".format(round(np.mean(last_pgd20), 2), round(np.std(last_pgd20, ddof=0), 2)))
+    print(">> Last CW: {}({})".format(round(np.mean(last_cw), 2), round(np.std(last_cw, ddof=0), 2)))
+    print(">> Best Nature: {}({})".format(round(np.mean(best_nature), 2), round(np.std(best_nature, ddof=0), 2)))
+    print(">> Best PGD20: {}({})".format(round(np.mean(best_pgd20), 2), round(np.std(best_pgd20, ddof=0), 2)))
+    print(">> Best CW: {}({})".format(round(np.mean(best_cw), 2), round(np.std(best_cw, ddof=0), 2)))

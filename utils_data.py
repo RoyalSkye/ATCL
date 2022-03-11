@@ -76,4 +76,13 @@ def prepare_train_loaders(full_train_loader, batch_size, ordinary_train_dataset,
     complementary_dataset = torch.utils.data.TensorDataset(data, torch.from_numpy(complementary_labels).long(), labels, id)
     ordinary_train_loader = torch.utils.data.DataLoader(dataset=ordinary_train_dataset, batch_size=batch_size, shuffle=True)
     complementary_train_loader = torch.utils.data.DataLoader(dataset=complementary_dataset, batch_size=batch_size, shuffle=True)
+
+    # torch.save({
+    #     'data': data,
+    #     'cl_labels': torch.from_numpy(complementary_labels).long(),
+    #     'labels': labels,
+    #     'id': id,
+    #     'partialY': partialY,
+    # }, "./cl_dataset.pt")
+
     return ordinary_train_loader, complementary_train_loader, ccp, x_to_mcls, x_to_tls, partialY

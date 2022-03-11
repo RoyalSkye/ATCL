@@ -13,4 +13,4 @@ __pycache__/
 
 # private files
 utils_plot.py
-imgs/
+tmp/
