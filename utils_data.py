@@ -1,9 +1,41 @@
 import sys, random
 import numpy as np
 import torch
+from PIL import Image
 import torchvision.transforms as transforms
 import torchvision.datasets as dsets
-import torchvision.models as models
+from torch.utils.data import Dataset
+
+
+class AugComp(Dataset):
+
+    def __init__(self, data, cl, tl, id, transform=None):
+        self.data = data
+        self.cl = cl
+        self.tl = tl
+        self.id = id
+        self.transform = transform
+
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        img, cl_target, tl_target, idx = self.data[index], self.cl[index], self.tl[index], self.id[index]
+
+        # doing this so that it is consistent with all other datasets to return a PIL Image
+        img = Image.fromarray(img)  # for cifar10
+        # img = Image.fromarray(img.numpy(), mode='L')  # for [mnist, fashion, kuzushiji]
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        return img, cl_target, tl_target, idx
+
+    def __len__(self):
+        return len(self.data)
 
 
 def generate_compl_labels(labels):
@@ -43,19 +75,26 @@ def prepare_data(dataset, batch_size):
         input_dim, input_channel = 3 * 32 * 32, 3
     train_loader = torch.utils.data.DataLoader(dataset=ordinary_train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
-    full_train_loader = torch.utils.data.DataLoader(dataset=ordinary_train_dataset, batch_size=len(ordinary_train_dataset.data), shuffle=False)
     num_classes = len(ordinary_train_dataset.classes)
-    return full_train_loader, train_loader, test_loader, ordinary_train_dataset, test_dataset, num_classes, input_dim, input_channel
+    return train_loader, test_loader, ordinary_train_dataset, test_dataset, num_classes, input_dim, input_channel
 
 
-def prepare_train_loaders(full_train_loader, batch_size, ordinary_train_dataset, cl_num):
+def prepare_train_loaders(batch_size, ordinary_train_dataset, cl_num, data_aug=None):
     """
         ccp is only used for "free", "ga", "nn"
         partialY is used for utils_mcl_loss, in this case, complementary_labels(var) is useless
     """
-    for i, (data, labels) in enumerate(full_train_loader):
-        K = torch.max(labels)+1  # K is number of classes, full_train_loader is full batch
-        bs = labels.size(0)
+    # load raw_data if data_aug is not None
+    if data_aug is not None:
+        data, labels = ordinary_train_dataset.data, ordinary_train_dataset.targets
+        bs, K = len(ordinary_train_dataset.data), len(ordinary_train_dataset.classes)
+        labels = torch.LongTensor(labels)
+    else:
+        full_train_loader = torch.utils.data.DataLoader(dataset=ordinary_train_dataset, batch_size=len(ordinary_train_dataset.data), shuffle=False)
+        for i, (data, labels) in enumerate(full_train_loader):
+            K = torch.max(labels) + 1
+            bs = labels.size(0)
+
     complementary_labels = generate_compl_labels(labels)
     x_to_tls = {i: -1 for i in range(bs)}
     x_to_mcls = {i: set() for i in range(bs)}
@@ -73,16 +112,11 @@ def prepare_train_loaders(full_train_loader, batch_size, ordinary_train_dataset,
             partialY[idx] = torch.ones(K).scatter_(0, torch.LongTensor(mcls), 0)
     ccp = class_prior(complementary_labels)
     id = torch.arange(bs)
-    complementary_dataset = torch.utils.data.TensorDataset(data, torch.from_numpy(complementary_labels).long(), labels, id)
-    ordinary_train_loader = torch.utils.data.DataLoader(dataset=ordinary_train_dataset, batch_size=batch_size, shuffle=True)
+
+    if data_aug is not None:
+        complementary_dataset = AugComp(data=data, cl=torch.from_numpy(complementary_labels).long(), tl=labels, id=id, transform=data_aug)
+    else:
+        complementary_dataset = torch.utils.data.TensorDataset(data, torch.from_numpy(complementary_labels).long(), labels, id)
     complementary_train_loader = torch.utils.data.DataLoader(dataset=complementary_dataset, batch_size=batch_size, shuffle=True)
 
-    # torch.save({
-    #     'data': data,
-    #     'cl_labels': torch.from_numpy(complementary_labels).long(),
-    #     'labels': labels,
-    #     'id': id,
-    #     'partialY': partialY,
-    # }, "./cl_dataset.pt")
-
-    return ordinary_train_loader, complementary_train_loader, ccp, x_to_mcls, x_to_tls, partialY
+    return complementary_train_loader, ccp, x_to_mcls, x_to_tls, partialY

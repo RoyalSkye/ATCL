@@ -30,7 +30,7 @@ def gce_loss(outputs, Y):
     q = 0.7
     sm_outputs = F.softmax(outputs, dim=1)
     pow_outputs = torch.pow(sm_outputs, q)
-    sample_loss = (1-(pow_outputs*Y).sum(dim=1))/q # n
+    sample_loss = (1-(pow_outputs*Y).sum(dim=1))/q  # n
     return sample_loss
 
 

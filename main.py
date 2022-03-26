@@ -38,10 +38,16 @@ def one_stage_adversarial_train(args, model, optimizer, seed):
                 assert args.cl_num == 1
                 loss, _ = chosen_loss_c(f=logit, K=K, labels=cl_labels, ccp=ccp, meta_method=args.method)
             loss.backward()
+
             # the grad stat
-            assert args.model == "cnn", "please modify grad stat code!"
-            first_layer_grad.append(model.module.feature_extractor.conv1.weight.grad.norm(p=2).cpu().item())
-            last_layer_grad.append(model.module.classifier.fc3.weight.grad.norm(p=2).cpu().item())
+            if args.model == "cnn":
+                first_layer_grad.append(model.module.feature_extractor.conv1.weight.grad.norm(p=2).cpu().item())
+                last_layer_grad.append(model.module.classifier.fc3.weight.grad.norm(p=2).cpu().item())
+            elif args.model in ["densenet", "resnet18"]:
+                first_layer_grad.append(model.module.conv1.weight.grad.norm(p=2).cpu().item())
+                last_layer_grad.append(model.module.linear.weight.grad.norm(p=2).cpu().item())
+            else:
+                assert True, "please modify grad stat code!"
             optimizer.step()
 
         # Evalutions
@@ -316,12 +322,13 @@ def cl_lr_schedule(lr, epoch, optimizer):
 
 def adv_lr_schedule(lr, epoch, optimizer):
     if args.dataset != "cifar10":
+        # no lr_decay for small dataset
         pass
     elif args.dataset == "cifar10":
-        # 100 epochs for ResNet18/WRN32-10
-        if epoch == 50:
+        # 100 epochs for DenseNet/ResNet18
+        if epoch == 60:
             lr /= 10
-        if epoch == 75:
+        if epoch == 90:
             lr /= 10
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
@@ -373,7 +380,7 @@ def create_model(args, input_dim, input_channel, K):
     elif args.model == 'resnet18':
         model = ResNet18(input_channel=input_channel, num_classes=K)
     elif args.model == 'densenet':
-        model = DenseNet121(input_channel=input_channel, num_classes=K)
+        model = densenet(input_channel=input_channel, num_classes=K)
     elif args.model == "wrn":
         model = Wide_ResNet_Madry(depth=32, num_classes=K, widen_factor=10, dropRate=0.0)  # WRN-32-10
 
@@ -438,8 +445,13 @@ if __name__ == "__main__":
         if not os.path.exists(args.out_dir):
             os.makedirs(args.out_dir)
 
-        full_train_loader, train_loader, test_loader, ordinary_train_dataset, test_dataset, K, input_dim, input_channel = prepare_data(dataset=args.dataset, batch_size=args.batch_size)
-        ordinary_train_loader, complementary_train_loader, ccp, x_to_mcls, x_to_tls, partialY = prepare_train_loaders(full_train_loader=full_train_loader, batch_size=args.batch_size, ordinary_train_dataset=ordinary_train_dataset, cl_num=args.cl_num)
+        data_aug = transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor()
+        ]) if args.dataset in ["cifar10"] else None
+        train_loader, test_loader, ordinary_train_dataset, test_dataset, K, input_dim, input_channel = prepare_data(dataset=args.dataset, batch_size=args.batch_size)
+        complementary_train_loader, ccp, x_to_mcls, x_to_tls, partialY = prepare_train_loaders(batch_size=args.batch_size, ordinary_train_dataset=ordinary_train_dataset, cl_num=args.cl_num, data_aug=data_aug)
         partialY = partialY.to(device)
 
         # complementary learning, ref to "Complementary-label learning for arbitrary losses and models"
@@ -460,14 +472,16 @@ if __name__ == "__main__":
             display_num_param(model)
             model = model.to(device)
             model = torch.nn.DataParallel(model)
-            optimizer = torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum)
+            optimizer = torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum, weight_decay=args.weight_decay) if args.dataset == "cifar10" else torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum)
             # last_res, best_res = two_stage_adversarial_train(args, model, optimizer, seed)
             last_res, best_res = one_stage_adversarial_train(args, model, optimizer, seed)
+            last_nature.append(last_res[0]);last_pgd20.append(last_res[1]);last_cw.append(last_res[2])
+            best_nature.append(best_res[0]);best_pgd20.append(best_res[1]);best_cw.append(best_res[2])
 
     print(last_nature);print(last_pgd20);print(last_cw);print(best_nature);print(best_pgd20);print(best_cw)
-    print(">> Last Nature: {}({})".format(round(np.mean(last_nature), 2), round(np.std(last_nature, ddof=0), 2)))
-    print(">> Last PGD20: {}({})".format(round(np.mean(last_pgd20), 2), round(np.std(last_pgd20, ddof=0), 2)))
-    print(">> Last CW: {}({})".format(round(np.mean(last_cw), 2), round(np.std(last_cw, ddof=0), 2)))
-    print(">> Best Nature: {}({})".format(round(np.mean(best_nature), 2), round(np.std(best_nature, ddof=0), 2)))
-    print(">> Best PGD20: {}({})".format(round(np.mean(best_pgd20), 2), round(np.std(best_pgd20, ddof=0), 2)))
-    print(">> Best CW: {}({})".format(round(np.mean(best_cw), 2), round(np.std(best_cw, ddof=0), 2)))
+    print(">> Last Nature: {}($\pm${})".format(round(np.mean(last_nature), 2), round(np.std(last_nature, ddof=0), 2)))
+    print(">> Last PGD20: {}($\pm${})".format(round(np.mean(last_pgd20), 2), round(np.std(last_pgd20, ddof=0), 2)))
+    print(">> Last CW: {}($\pm${})".format(round(np.mean(last_cw), 2), round(np.std(last_cw, ddof=0), 2)))
+    print(">> Best Nature: {}($\pm${})".format(round(np.mean(best_nature), 2), round(np.std(best_nature, ddof=0), 2)))
+    print(">> Best PGD20: {}($\pm${})".format(round(np.mean(best_pgd20), 2), round(np.std(best_pgd20, ddof=0), 2)))
+    print(">> Best CW: {}($\pm${})".format(round(np.mean(best_cw), 2), round(np.std(best_cw, ddof=0), 2)))

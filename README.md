@@ -4,7 +4,11 @@
 
 ```shell
 # For MNIST/Fashion/KMNIST
-CUDA_VISIBLE_DEVICES=0 nohup python -u main.py --dataset 'kuzushiji' --model 'cnn' --method 'exp' --adv_epochs 100 --at_lr 0.01 --scheduler 'cosine' --sch_epoch 50 2>&1 & 
+CUDA_VISIBLE_DEVICES=0 nohup python -u main.py --dataset 'kuzushiji' --model 'cnn' --method 'log' --adv_epochs 100 --at_lr 0.01 --scheduler 'cosine' --sch_epoch 50 --out_dir ./kuzushiji_cnn_log_cos_50_0.01 2>&1 & 
+# For CIFAR10
+CUDA_VISIBLE_DEVICES=0 nohup python -u main.py --dataset 'cifar10' --model 'densenet' --method 'log' --adv_epochs 100 --at_lr 0.01 --scheduler 'cosine' --sch_epoch 50 --out_dir ./cifar10_densenet_log_cos_50_0.01 2>&1 &
+# Two_stage
+CUDA_VISIBLE_DEVICES=0 nohup python -u main.py --dataset 'cifar10' --model 'densenet' --method 'log' --epochs 50 --adv_epochs 100 --cl_lr 0.01 --at_lr 0.01 --out_dir ./cifar10_densenet_log_two_stage_0.01_0.01 2>&1 & 
 ```
 
 #### Reference

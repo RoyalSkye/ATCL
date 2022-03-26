@@ -81,7 +81,7 @@ def pgd(model, data, target, epsilon, step_size, num_steps, loss_fn, category, r
             if loss_fn == "cw":
                 loss_adv = cwloss(output, target, num_classes=num_classes)
             if loss_fn == "kl":
-                criterion_kl = nn.KLDivLoss(reduction="mean").cuda()
+                criterion_kl = nn.KLDivLoss(reduction="batchmean").cuda()
                 loss_adv = criterion_kl(F.log_softmax(output, dim=1), F.softmax(model(data), dim=1))
         loss_adv.backward()
         eta = step_size * x_adv.grad.sign()
