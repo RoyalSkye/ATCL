@@ -73,7 +73,7 @@ def prepare_data(dataset, batch_size):
         ordinary_train_dataset = dsets.CIFAR10(root='./data/CIFAR10', train=True, transform=transforms.ToTensor(), download=True)
         test_dataset = dsets.CIFAR10(root='./data/CIFAR10', train=False, transform=transforms.ToTensor())
         input_dim, input_channel = 3 * 32 * 32, 3
-    train_loader = torch.utils.data.DataLoader(dataset=ordinary_train_dataset, batch_size=batch_size, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(dataset=ordinary_train_dataset, batch_size=batch_size, shuffle=False)
     test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
     num_classes = len(ordinary_train_dataset.classes)
     return train_loader, test_loader, ordinary_train_dataset, test_dataset, num_classes, input_dim, input_channel
@@ -98,6 +98,7 @@ def prepare_train_loaders(batch_size, ordinary_train_dataset, cl_num, data_aug=N
     complementary_labels = generate_compl_labels(labels)
     x_to_tls = {i: -1 for i in range(bs)}
     x_to_mcls = {i: set() for i in range(bs)}
+    ema = (torch.ones(bs, K).scatter_(1, torch.LongTensor(complementary_labels).unsqueeze(1), 0)) / (K - 1)
     partialY = torch.ones(bs, K).scatter_(1, torch.LongTensor(complementary_labels).unsqueeze(1), 0)
     for idx, cl in enumerate(complementary_labels.tolist()):
         x_to_mcls[idx] = {cl}
@@ -119,4 +120,4 @@ def prepare_train_loaders(batch_size, ordinary_train_dataset, cl_num, data_aug=N
         complementary_dataset = torch.utils.data.TensorDataset(data, torch.from_numpy(complementary_labels).long(), labels, id)
     complementary_train_loader = torch.utils.data.DataLoader(dataset=complementary_dataset, batch_size=batch_size, shuffle=True)
 
-    return complementary_train_loader, ccp, x_to_mcls, x_to_tls, partialY
+    return complementary_train_loader, ccp, x_to_mcls, x_to_tls, partialY, ema

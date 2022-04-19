@@ -33,7 +33,7 @@ def cwloss(output, target, confidence=50, num_classes=10):
     return loss
 
 
-def cl_adv(args, model, data, target, epsilon, step_size, num_steps, id, ccp, partialY, loss_fn, category="Madry", rand_init=True):
+def cl_adv(args, model, data, target, epsilon, step_size, num_steps, id, ccp, partialY, pseudo_labels, alpha, loss_fn, category="Madry", rand_init=True):
     model.eval()
     if category == "trades":
         x_adv = data.detach() + 0.001 * torch.randn(data.shape).to(device).detach() if rand_init else data.detach()
@@ -51,8 +51,11 @@ def cl_adv(args, model, data, target, epsilon, step_size, num_steps, id, ccp, pa
                 loss_adv = loss_fn(output, partialY[id].float())
             elif args.method in ['mae', 'mse', 'ce', 'gce', 'phuber_ce']:
                 loss_adv = unbiased_estimator(loss_fn, output, partialY[id].float())
-            elif args.cl_num == 1 and args.method in ['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp', 'scl_nl', 'l_uw', 'l_w']:
+            elif args.method in ['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp', 'scl_nl', 'l_uw', 'l_w']:
+                assert args.cl_num == 1
                 loss_adv, _ = chosen_loss_c(f=output, K=output.size(-1), labels=target, ccp=ccp, meta_method=args.method)
+            elif args.method in ["log_ce"]:
+                loss_adv = loss_fn(output, partialY[id].float(), pseudo_labels, alpha)
         loss_adv.backward()
         eta = step_size * x_adv.grad.sign()
         # Update adversarial data
