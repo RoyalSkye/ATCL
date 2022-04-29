@@ -1,5 +1,11 @@
 ## Adversarial Training with Complementary Labels
 
+### Setup
+
+* Python 3.8
+* [PyTorch 1.11.0](https://pytorch.org)
+* [Autoattack](https://github.com/fra31/auto-attack)
+
 ### Run
 
 ```shell
@@ -18,6 +24,6 @@ CUDA_VISIBLE_DEVICES=0 nohup python -u main.py --dataset 'mnist' --model 'cnn' -
 1. Ishida, T., Niu, G., Menon, A., & Sugiyama, M.<br>**Complementary-label learning for arbitrary losses and models**<br>In *ICML 2019*. [[paper]](https://arxiv.org/abs/1810.04327)
 1. Chou, Y. T., Niu, G., Lin, H. T., & Sugiyama, M.<br>**Unbiased Risk Estimators Can Mislead: A Case Study of Learning with Complementary Labels**<br>In *ICML 2020*. [[paper]](https://arxiv.org/abs/2007.02235)
 1. Feng, L., Kaneko, T., Han, B., Niu, G., An, B., & Sugiyama, M.<br>**Learning with Multiple Complementary Labels**<br>In *ICML 2020*. [[paper]](https://arxiv.org/abs/1912.12927v3)
-1. Gao, Y., & Zhang, M. L.<br>**Learning from Complementary Labels via Partial-Output Consistency Regularization**<br>In *IJCAI 2021*. [[paper]](https://www.ijcai.org/proceedings/2021/0423.pdf)
+1. Wang, D. B., Feng, L., & Zhang, M. L.<br>**Learning from Complementary Labels via Partial-Output Consistency Regularization**<br>In *IJCAI 2021*. [[paper]](https://www.ijcai.org/proceedings/2021/0423.pdf)
 1. Gao, Y., & Zhang, M. L.<br>**Discriminative Complementary-Label Learning with Weighted Loss**<br>In *ICML 2021*. [[paper]](http://proceedings.mlr.press/v139/gao21d/gao21d.pdf)
 

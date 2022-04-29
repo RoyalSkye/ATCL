@@ -34,6 +34,15 @@ def non_negative_loss(f, K, labels, ccp, beta):
     return final_loss, torch.mul(torch.from_numpy(count).float().to(device), loss_vector)
 
 
+def fast_free_loss(f, K, cl_label):
+    loss = -(K - 1) * nn.CrossEntropyLoss(reduction="none")(f, cl_label)
+    for k in range(K):
+        ll = torch.LongTensor([k] * cl_label.size(0)).to(device)
+        loss += nn.CrossEntropyLoss(reduction="none")(f, ll)
+
+    return loss
+
+
 def forward_loss(f, K, labels, reduction='mean'):
     Q = torch.ones(K, K) * 1/(K-1)  # uniform assumption
     Q = Q.to(device)

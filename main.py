@@ -1,5 +1,6 @@
 import argparse, time, os, random, math
 import pprint as pp
+import torchvision
 from utils_data import *
 from utils_algo import *
 from utils_mcl_loss import *
@@ -15,16 +16,16 @@ def adversarial_train(args, model, epochs, mode="atcl", seed=1):
     nature_train_acc_list, nature_test_acc_list, pgd20_acc_list, cw_acc_list = [], [], [], []
     first_layer_grad, last_layer_grad = [], []
     if mode == "cl":
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.cl_lr, momentum=args.momentum, weight_decay=args.weight_decay) if args.dataset == "cifar10" else torch.optim.Adam(model.parameters(), weight_decay=args.weight_decay, lr=args.cl_lr)
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.cl_lr, momentum=args.momentum, weight_decay=args.weight_decay) if args.dataset in ["cifar10", "cifar100"] else torch.optim.Adam(model.parameters(), weight_decay=args.weight_decay, lr=args.cl_lr)
     elif mode == "at":
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum, weight_decay=args.weight_decay) if args.dataset == "cifar10" else torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum)
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum, weight_decay=args.weight_decay) if args.dataset in ["cifar10", "cifar100"] else torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum)
         cl_model = create_model(args, input_dim, input_channel, K)
         checkpoint = torch.load(os.path.join(args.out_dir, "cl_best_checkpoint_seed{}.pth.tar".format(seed)))
         cl_model.load_state_dict(checkpoint['state_dict'])
         cl_model.eval()
         print(">> Load the CL model with train acc: {}, test acc: {}, epoch {}".format(checkpoint['train_acc'], checkpoint['test_acc'], checkpoint['epoch']))
     elif mode == "atcl":
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum, weight_decay=args.weight_decay) if args.dataset == "cifar10" else torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum)
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum, weight_decay=args.weight_decay) if args.dataset in ["cifar10", "cifar100"] else torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum)
 
     for epoch in range(epochs):
         correct, total = 0, 0
@@ -41,15 +42,20 @@ def adversarial_train(args, model, epochs, mode="atcl", seed=1):
             else:  # "atcl"
                 _, prob = get_pred(model, images.detach())
                 epsilon, step_size, num_steps = at_param_schedule(args, epoch + 1)
-                alpha = atcl_scheduler(args, id, prob, epsilon, epoch + 1)
+                alpha = atcl_scheduler(args, id, prob, epsilon, partialY, epoch + 1)
                 _, pseudo_labels = torch.max(ema[id], 1)
-                correct, total = (pseudo_labels == true_labels).sum().item(), pseudo_labels.size(0)
+                # pseudo_labels = torch.multinomial(ema[id], 1).squeeze(1)
+                correct += (pseudo_labels == true_labels).sum().item()
+                total += pseudo_labels.size(0)
                 if epsilon != 0:
                     # x_adv = pgd(model, images, true_labels, epsilon, step_size, num_steps, loss_fn="cent", category="Madry", rand_init=True, num_classes=K)  # mex_ce_tl
                     # x_adv = pgd(model, images, None, epsilon, step_size, num_steps, loss_fn="kl", category="trades", rand_init=True, num_classes=K)  # max_trades
                     x_adv = cl_adv(args, model, images, cl_labels, epsilon, step_size, num_steps, id, ccp, partialY, pseudo_labels, alpha, loss_fn, category="Madry", rand_init=True)  # max_cl
                 else:
                     x_adv = images
+
+            if batch_idx == 0:
+                torchvision.utils.save_image(x_adv, os.path.join(args.out_dir, "x_adv_seed_{}_epoch_{}.jpg".format(seed, epoch+1)))
 
             model.train()
             optimizer.zero_grad()
@@ -137,7 +143,7 @@ def adversarial_train(args, model, epochs, mode="atcl", seed=1):
         print(nature_test_acc_list)
         print(">> Best test acc({}): {}".format(best_epoch, max(nature_test_acc_list)))
         print(">> AVG test acc of last 10 epochs: {}".format(np.mean(nature_test_acc_list[-10:])))
-        epoch = [i for i in range(args.epochs)]
+        epoch = [i for i in range(epochs)]
         show([epoch] * 2, [nature_train_acc_list, nature_test_acc_list], label=["train acc", "test acc"], title=args.dataset, xdes="Epoch", ydes="Accuracy", path=os.path.join(args.out_dir, "cl_acc_seed{}.png".format(seed)))
 
         return np.mean(nature_test_acc_list[-10:])
@@ -148,7 +154,7 @@ def adversarial_train(args, model, epochs, mode="atcl", seed=1):
         print(">> Finished Adv Training: Natural Test Acc | Last_checkpoint %.4f | Best_checkpoint(%.1f) %.4f |\n" % (test_nat_acc, best_epoch, best_nat_acc))
         print(">> Finished Adv Training: PGD20 Test Acc | Last_checkpoint %.4f | Best_checkpoint %.4f |\n" % (test_pgd20_acc, best_pgd20_acc))
         print(">> Finished Adv Training: CW Test Acc | Last_checkpoint %.4f | Best_checkpoint %.4f |\n" % (test_cw_acc, best_cw_acc))
-        epoch = [i for i in range(args.adv_epochs)]
+        epoch = [i for i in range(epochs)]
         show([epoch, epoch, epoch], [nature_test_acc_list, pgd20_acc_list, cw_acc_list], label=["nature test acc", "pgd20 acc", "cw acc"],
              title=args.dataset, xdes="Epoch", ydes="Test Accuracy", path=os.path.join(args.out_dir, "adv_test_acc_seed{}.png".format(seed)))
         print("first_layer [:2500] iter: \n{} \nfirst_layer [-2500:] iter: \n{} \nlast_layer [:2500] iter: \n{} \nlast_layer [-2500:] iter: \n{}".format(
@@ -203,15 +209,22 @@ def at_param_schedule(args, epoch):
         return args.epsilon, args.step_size, args.num_steps
 
 
-def atcl_scheduler(args, id, prob, epsilon, epoch):
-    if epoch <= args.warmup_epoch:
+def atcl_scheduler(args, id, prob, epsilon, partialY, epoch):
+    if args.sch_epoch == 0:
+        alpha = 1 if epoch <= args.warmup_epoch else 0
+    else:
+        alpha = min(max(1 - (epoch-args.warmup_epoch)/args.sch_epoch, 0), 1)
+
+    if epoch <= 5:
         ema[id] = ema[id]
     elif epsilon < args.epsilon/2:
         ema[id] = 0.9 * ema[id] + (1 - 0.9) * prob
     else:
-        ema[id] = 0.99 * ema[id] + (1 - 0.99) * prob
+        ema[id] = ema[id]
 
-    return min(max(1 - (epoch-args.warmup_epoch)/args.sch_epoch, 0), 1)
+    ema[id] = ema[id] * partialY[id]  # reset to 0 for cls
+
+    return alpha
 
 
 def cl_lr_schedule(lr, epoch, optimizer):
@@ -222,13 +235,13 @@ def cl_lr_schedule(lr, epoch, optimizer):
 
 
 def adv_lr_schedule(lr, epoch, optimizer):
-    if args.dataset != "cifar10":
+    if args.dataset in ["mnist", "fashion", "kuzushiji"]:
         # no lr_decay for small dataset
         pass
-    elif args.dataset == "cifar10":
-        if epoch == 30:
+    elif args.dataset in ["cifar10", "cifar100"]:
+        if epoch == (30+args.warmup_epoch):
             lr /= 10
-        if epoch == 60:
+        if epoch == (60+args.warmup_epoch):
             lr /= 10
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
@@ -283,6 +296,8 @@ def create_model(args, input_dim, input_channel, K):
         model = ResNet18(input_channel=input_channel, num_classes=K)
     elif args.model == 'densenet':
         model = densenet(input_channel=input_channel, num_classes=K)
+    elif args.model == 'preact_resnet18':
+        model = preactresnet18(input_channel=input_channel, num_classes=K)
     elif args.model == "wrn":
         model = Wide_ResNet_Madry(depth=32, num_classes=K, widen_factor=10, dropRate=0.0)  # WRN-32-10
 
@@ -308,13 +323,13 @@ if __name__ == "__main__":
     parser.add_argument('--cl_lr', type=float, default=5e-5, help='learning rate for complementary learning')
     parser.add_argument('--at_lr', type=float, default=1e-2, help='learning rate for adversarial training')
     parser.add_argument('--batch_size', type=int, default=256, help='batch_size of ordinary labels.')
-    parser.add_argument('--cl_num', type=int, default=1, help='the number of complementary labels of each data.')
-    parser.add_argument('--dataset', type=str, default="kuzushiji", choices=['mnist', 'kuzushiji', 'fashion', 'cifar10'],
-                        help="dataset, choose from mnist, kuzushiji, fashion, cifar10")
+    parser.add_argument('--cl_num', type=int, default=1, help='(1-9): the number of complementary labels of each data; (0): mul-cls data distribution of ICML2020')
+    parser.add_argument('--dataset', type=str, default="mnist", choices=['mnist', 'kuzushiji', 'fashion', 'cifar10', 'cifar100'],
+                        help="dataset, choose from mnist, kuzushiji, fashion, cifar10, cifar100")
     parser.add_argument('--framework', type=str, default='one_stage', choices=['one_stage', 'two_stage'])
     parser.add_argument('--method', type=str, default='exp', choices=['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp',
                         'scl_nl', 'mae', 'mse', 'ce', 'gce', 'phuber_ce', 'log', 'exp', 'l_uw', 'l_w', 'log_ce'])
-    parser.add_argument('--model', type=str, default='cnn', choices=['linear', 'mlp', 'cnn', 'resnet18', 'densenet', 'wrn'], help='model name')
+    parser.add_argument('--model', type=str, default='cnn', choices=['linear', 'mlp', 'cnn', 'resnet18', 'densenet', 'preact_resnet18', 'wrn'], help='model name')
     parser.add_argument('--cl_epochs', default=0, type=int, help='number of epochs for cl learning')
     parser.add_argument('--adv_epochs', default=100, type=int, help='number of epochs for adv')
     parser.add_argument('--weight_decay', type=float, default=1e-4, help='weight decay')
@@ -325,13 +340,13 @@ if __name__ == "__main__":
     parser.add_argument('--epsilon', type=float, default=0.3, help='perturbation bound')
     parser.add_argument('--num_steps', type=int, default=40, help='maximum perturbation step K')
     parser.add_argument('--step_size', type=float, default=0.01, help='step size')
-    parser.add_argument('--scheduler', type=str, default="linear", choices=['linear', 'cosine', 'none'], help='epsilon scheduler')
-    parser.add_argument('--sch_epoch', type=int, default=50, help='scheduler epoch')
-    parser.add_argument('--warmup_epoch', type=int, default=10, help='warmup epoch for exponential moving average')
+    parser.add_argument('--scheduler', type=str, default="none", choices=['linear', 'cosine', 'none'], help='epsilon scheduler')
+    parser.add_argument('--sch_epoch', type=int, default=0, help='scheduler epoch')
+    parser.add_argument('--warmup_epoch', type=int, default=0, help='warmup epoch for exponential moving average')
     args = parser.parse_args()
 
     # To be removed
-    if args.dataset == "cifar10":
+    if args.dataset in ["cifar10", "cifar100"]:
         args.weight_decay, args.batch_size = 5e-4, 128
         args.epsilon, args.num_steps, args.step_size = 8/255, 10, 2/255
 
@@ -356,9 +371,9 @@ if __name__ == "__main__":
             transforms.RandomCrop(32, padding=4),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor()
-        ]) if args.dataset in ["cifar10"] else None
+        ]) if args.dataset in ["cifar10", "cifar100"] else None
         train_loader, test_loader, ordinary_train_dataset, test_dataset, K, input_dim, input_channel = prepare_data(dataset=args.dataset, batch_size=args.batch_size)
-        complementary_train_loader, ccp, x_to_mcls, x_to_tls, partialY, ema = prepare_train_loaders(batch_size=args.batch_size, ordinary_train_dataset=ordinary_train_dataset, cl_num=args.cl_num, data_aug=data_aug)
+        complementary_train_loader, ccp, partialY, ema = prepare_train_loaders(batch_size=args.batch_size, ordinary_train_dataset=ordinary_train_dataset, cl_num=args.cl_num, data_aug=data_aug)
         partialY, ema = partialY.to(device), ema.to(device)
 
         model = create_model(args, input_dim, input_channel, K)
