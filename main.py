@@ -16,16 +16,16 @@ def adversarial_train(args, model, epochs, mode="atcl", seed=1):
     nature_train_acc_list, nature_test_acc_list, pgd20_acc_list, cw_acc_list = [], [], [], []
     first_layer_grad, last_layer_grad = [], []
     if mode == "cl":
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.cl_lr, momentum=args.momentum, weight_decay=args.weight_decay) if args.dataset in ["cifar10", "cifar100"] else torch.optim.Adam(model.parameters(), weight_decay=args.weight_decay, lr=args.cl_lr)
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.cl_lr, momentum=args.momentum, weight_decay=args.weight_decay) if args.dataset in ["cifar10", "svhn", "cifar100"] else torch.optim.Adam(model.parameters(), weight_decay=args.weight_decay, lr=args.cl_lr)
     elif mode == "at":
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum, weight_decay=args.weight_decay) if args.dataset in ["cifar10", "cifar100"] else torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum)
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum, weight_decay=args.weight_decay) if args.dataset in ["cifar10", "svhn", "cifar100"] else torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum)
         cl_model = create_model(args, input_dim, input_channel, K)
         checkpoint = torch.load(os.path.join(args.out_dir, "cl_best_checkpoint_seed{}.pth.tar".format(seed)))
         cl_model.load_state_dict(checkpoint['state_dict'])
         cl_model.eval()
         print(">> Load the CL model with train acc: {}, test acc: {}, epoch {}".format(checkpoint['train_acc'], checkpoint['test_acc'], checkpoint['epoch']))
     elif mode == "atcl":
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum, weight_decay=args.weight_decay) if args.dataset in ["cifar10", "cifar100"] else torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum)
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum, weight_decay=args.weight_decay) if args.dataset in ["cifar10", "svhn", "cifar100"] else torch.optim.SGD(model.parameters(), lr=args.at_lr, momentum=args.momentum)
 
     for epoch in range(epochs):
         correct, total = 0, 0
@@ -238,7 +238,7 @@ def adv_lr_schedule(lr, epoch, optimizer):
     if args.dataset in ["mnist", "fashion", "kuzushiji"]:
         # no lr_decay for small dataset
         pass
-    elif args.dataset in ["cifar10", "cifar100"]:
+    elif args.dataset in ["cifar10", "svhn", "cifar100"]:
         if epoch == (30+args.warmup_epoch):
             lr /= 10
         if epoch == (60+args.warmup_epoch):
@@ -324,8 +324,8 @@ if __name__ == "__main__":
     parser.add_argument('--at_lr', type=float, default=1e-2, help='learning rate for adversarial training')
     parser.add_argument('--batch_size', type=int, default=256, help='batch_size of ordinary labels.')
     parser.add_argument('--cl_num', type=int, default=1, help='(1-9): the number of complementary labels of each data; (0): mul-cls data distribution of ICML2020')
-    parser.add_argument('--dataset', type=str, default="mnist", choices=['mnist', 'kuzushiji', 'fashion', 'cifar10', 'cifar100'],
-                        help="dataset, choose from mnist, kuzushiji, fashion, cifar10, cifar100")
+    parser.add_argument('--dataset', type=str, default="mnist", choices=['mnist', 'kuzushiji', 'fashion', 'cifar10', 'svhn', 'cifar100'],
+                        help="dataset, choose from mnist, kuzushiji, fashion, cifar10, svhn, cifar100")
     parser.add_argument('--framework', type=str, default='one_stage', choices=['one_stage', 'two_stage'])
     parser.add_argument('--method', type=str, default='exp', choices=['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp',
                         'scl_nl', 'mae', 'mse', 'ce', 'gce', 'phuber_ce', 'log', 'exp', 'l_uw', 'l_w', 'log_ce'])
@@ -346,7 +346,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # To be removed
-    if args.dataset in ["cifar10", "cifar100"]:
+    if args.dataset in ["cifar10", "svhn", "cifar100"]:
         args.weight_decay, args.batch_size = 5e-4, 128
         args.epsilon, args.num_steps, args.step_size = 8/255, 10, 2/255
 
@@ -371,9 +371,9 @@ if __name__ == "__main__":
             transforms.RandomCrop(32, padding=4),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor()
-        ]) if args.dataset in ["cifar10", "cifar100"] else None
-        train_loader, test_loader, ordinary_train_dataset, test_dataset, K, input_dim, input_channel = prepare_data(dataset=args.dataset, batch_size=args.batch_size)
-        complementary_train_loader, ccp, partialY, ema = prepare_train_loaders(batch_size=args.batch_size, ordinary_train_dataset=ordinary_train_dataset, cl_num=args.cl_num, data_aug=data_aug)
+        ]) if args.dataset in ["cifar10", "svhn", "cifar100"] else None
+        train_loader, test_loader, ordinary_train_dataset, test_dataset, K, input_dim, input_channel = prepare_data(args)
+        complementary_train_loader, ccp, partialY, ema = prepare_train_loaders(args, ordinary_train_dataset=ordinary_train_dataset, data_aug=data_aug)
         partialY, ema = partialY.to(device), ema.to(device)
 
         model = create_model(args, input_dim, input_channel, K)

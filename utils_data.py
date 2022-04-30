@@ -10,7 +10,8 @@ from scipy.special import comb
 
 class AugComp(Dataset):
 
-    def __init__(self, data, cl, tl, id, transform=None):
+    def __init__(self, name, data, cl, tl, id, transform=None):
+        self.name = name
         self.data = data
         self.cl = cl
         self.tl = tl
@@ -27,8 +28,14 @@ class AugComp(Dataset):
         img, cl_target, tl_target, idx = self.data[index], self.cl[index], self.tl[index], self.id[index]
 
         # doing this so that it is consistent with all other datasets to return a PIL Image
-        img = Image.fromarray(img)  # for cifar10
-        # img = Image.fromarray(img.numpy(), mode='L')  # for [mnist, fashion, kuzushiji]
+        if self.name in ["mnist", "fashion", "kuzushiji"]:
+            img = Image.fromarray(img.numpy(), mode="L")
+        elif self.name in ["cifar10", "cifar100"]:
+            img = Image.fromarray(img)
+        elif self.name in ["svhn"]:
+            img = Image.fromarray(np.transpose(img, (1, 2, 0)))
+        else:
+            assert 0, "Please modify AugComp, since you are using an unsupported dataset: {}".format(self.name)
 
         if self.transform is not None:
             img = self.transform(img)
@@ -135,38 +142,45 @@ def class_prior(complementary_labels):
     return np.bincount(complementary_labels) / len(complementary_labels)
 
 
-def prepare_data(dataset, batch_size):
+def prepare_data(args):
+    dataset, batch_size = args.dataset, args.batch_size
     if dataset == "mnist":
         ordinary_train_dataset = dsets.MNIST(root='./data/MNIST', train=True, transform=transforms.ToTensor(), download=True)
         test_dataset = dsets.MNIST(root='./data/MNIST', train=False, transform=transforms.ToTensor())
-        input_dim, input_channel = 28 * 28, 1
+        input_dim, input_channel, num_classes = 28 * 28, 1, 10
     elif dataset == "kuzushiji":
         ordinary_train_dataset = dsets.KMNIST(root='./data/KMNIST', train=True, transform=transforms.ToTensor(), download=True)
         test_dataset = dsets.KMNIST(root='./data/KMNIST', train=False, transform=transforms.ToTensor())
-        input_dim, input_channel = 28 * 28, 1
+        input_dim, input_channel, num_classes = 28 * 28, 1, 10
     elif dataset == "fashion":
         ordinary_train_dataset = dsets.FashionMNIST(root='./data/FashionMNIST', train=True, transform=transforms.ToTensor(), download=True)
         test_dataset = dsets.FashionMNIST(root='./data/FashionMNIST', train=False, transform=transforms.ToTensor())
-        input_dim, input_channel = 28 * 28, 1
+        input_dim, input_channel, num_classes = 28 * 28, 1, 10
     elif dataset == "cifar10":
         ordinary_train_dataset = dsets.CIFAR10(root='./data/CIFAR10', train=True, transform=transforms.ToTensor(), download=True)
         test_dataset = dsets.CIFAR10(root='./data/CIFAR10', train=False, transform=transforms.ToTensor())
-        input_dim, input_channel = 3 * 32 * 32, 3
+        input_dim, input_channel, num_classes = 3 * 32 * 32, 3, 10
+    elif dataset == "svhn":
+        ordinary_train_dataset = dsets.SVHN(root='./data/SVHN', split='train', download=True, transform=transforms.ToTensor())
+        test_dataset = dsets.SVHN(root='./data/SVHN', split='test', download=True, transform=transforms.ToTensor())
+        ordinary_train_dataset.targets = ordinary_train_dataset.labels
+        ordinary_train_dataset.classes = ['0 - zero', '1 - one', '2 - two', '3 - three', '4 - four', '5 - five', '6 - six', '7 - seven', '8 - eight', '9 - nine']
+        input_dim, input_channel, num_classes = 3 * 32 * 32, 3, 10
     elif dataset == "cifar100":
         ordinary_train_dataset = dsets.CIFAR100(root='./data/CIFAR100', train=True, transform=transforms.ToTensor(), download=True)
         test_dataset = dsets.CIFAR100(root='./data/CIFAR100', train=False, transform=transforms.ToTensor())
-        input_dim, input_channel = 3 * 32 * 32, 3
+        input_dim, input_channel, num_classes = 3 * 32 * 32, 3, 100
     train_loader = torch.utils.data.DataLoader(dataset=ordinary_train_dataset, batch_size=batch_size, shuffle=False)
     test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
-    num_classes = len(ordinary_train_dataset.classes)
     return train_loader, test_loader, ordinary_train_dataset, test_dataset, num_classes, input_dim, input_channel
 
 
-def prepare_train_loaders(batch_size, ordinary_train_dataset, cl_num, data_aug=None):
+def prepare_train_loaders(args, ordinary_train_dataset, data_aug=None):
     """
         ccp is only used for "free", "ga", "nn"
         partialY is used for multiple complementary labels
     """
+    batch_size, cl_num = args.batch_size, args.cl_num
     # load raw_data if data_aug is not None
     if data_aug is not None:
         data, labels = ordinary_train_dataset.data, ordinary_train_dataset.targets
@@ -190,7 +204,7 @@ def prepare_train_loaders(batch_size, ordinary_train_dataset, cl_num, data_aug=N
     ema = partialY / partialY.sum(1).unsqueeze(1)
     id = torch.arange(bs)
     if data_aug is not None:
-        complementary_dataset = AugComp(data=data, cl=torch.from_numpy(complementary_labels).long(), tl=labels, id=id, transform=data_aug)
+        complementary_dataset = AugComp(name=args.dataset, data=data, cl=torch.from_numpy(complementary_labels).long(), tl=labels, id=id, transform=data_aug)
     else:
         complementary_dataset = torch.utils.data.TensorDataset(data, torch.from_numpy(complementary_labels).long(), labels, id)
     complementary_train_loader = torch.utils.data.DataLoader(dataset=complementary_dataset, batch_size=batch_size, shuffle=True)

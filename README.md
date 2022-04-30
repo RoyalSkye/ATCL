@@ -3,6 +3,7 @@
 ### Setup
 
 * Python 3.8
+* Scipy
 * [PyTorch 1.11.0](https://pytorch.org)
 * [Autoattack](https://github.com/fra31/auto-attack)
 
