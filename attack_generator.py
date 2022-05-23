@@ -54,7 +54,7 @@ def cl_adv(args, model, data, target, epsilon, step_size, num_steps, id, ccp, pa
             elif args.method in ['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp', 'scl_nl', 'l_uw', 'l_w']:
                 assert args.cl_num == 1
                 loss_adv, _ = chosen_loss_c(f=output, K=output.size(-1), labels=target, ccp=ccp, meta_method=args.method)
-            elif args.method in ["log_ce"]:
+            elif args.method in ["log_ce", "exp_ce"]:
                 loss_adv = loss_fn(output, partialY[id].float(), pseudo_labels, alpha)
         loss_adv.backward()
         eta = step_size * x_adv.grad.sign()

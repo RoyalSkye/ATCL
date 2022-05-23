@@ -29,6 +29,7 @@ def adversarial_train(args, model, epochs, mode="atcl", seed=1):
 
     for epoch in range(epochs):
         correct, total = 0, 0
+        lr = (epoch+1) / 5 * args.at_lr if (mode == "cl" or mode == "atcl") and (epoch < 5 and args.dataset in ["cifar10", "svhn", "cifar100"]) else lr  # lr warmup for cll
         lr = cl_lr_schedule(lr, epoch + 1, optimizer) if mode == "cl" else adv_lr_schedule(lr, epoch + 1, optimizer)
         for batch_idx, (images, cl_labels, true_labels, id) in enumerate(complementary_train_loader):
             images, cl_labels, true_labels = images.to(device), cl_labels.to(device), true_labels.to(device)
@@ -70,7 +71,7 @@ def adversarial_train(args, model, epochs, mode="atcl", seed=1):
                 elif args.method in ['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp', 'scl_nl', 'l_uw', 'l_w']:
                     assert args.cl_num == 1
                     loss, _ = chosen_loss_c(f=logit, K=K, labels=cl_labels, ccp=ccp, meta_method=args.method)
-                elif args.method in ["log_ce"]:
+                elif args.method in ["log_ce", "exp_ce"]:
                     loss = loss_fn(logit, partialY[id].float(), pseudo_labels, alpha)
             loss.backward()
 
@@ -157,8 +158,7 @@ def adversarial_train(args, model, epochs, mode="atcl", seed=1):
         epoch = [i for i in range(epochs)]
         show([epoch, epoch, epoch], [nature_test_acc_list, pgd20_acc_list, cw_acc_list], label=["nature test acc", "pgd20 acc", "cw acc"],
              title=args.dataset, xdes="Epoch", ydes="Test Accuracy", path=os.path.join(args.out_dir, "adv_test_acc_seed{}.png".format(seed)))
-        print("first_layer [:2500] iter: \n{} \nfirst_layer [-2500:] iter: \n{} \nlast_layer [:2500] iter: \n{} \nlast_layer [-2500:] iter: \n{}".format(
-                first_layer_grad[:2500], first_layer_grad[-2500:], last_layer_grad[:2500], last_layer_grad[-2500:]), file=open(os.path.join(args.out_dir, "grad_seed{}.out".format(seed)), "a+"))
+        print("first_layer: \n{} \nlast_layer: \n{}".format(first_layer_grad, last_layer_grad), file=open(os.path.join(args.out_dir, "grad_seed{}.out".format(seed)), "a+"))
         # Auto-attack
         aa_eval(args, model, filename="aa_last.txt")
         best_checkpoint = torch.load(os.path.join(args.out_dir, "best_checkpoint_seed{}.pth.tar".format(seed)))
@@ -228,7 +228,6 @@ def atcl_scheduler(args, id, prob, epsilon, partialY, epoch):
 
 
 def cl_lr_schedule(lr, epoch, optimizer):
-    # no lr_decay for cll
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
     return lr
@@ -279,6 +278,8 @@ def create_loss_fn(args):
         loss_fn = exp_loss
     elif args.method == 'log_ce':
         loss_fn = log_ce_loss
+    elif args.method == "exp_ce":
+        loss_fn = exp_ce_loss
     else:
         loss_fn = None
 
@@ -299,7 +300,7 @@ def create_model(args, input_dim, input_channel, K):
     elif args.model == 'preact_resnet18':
         model = preactresnet18(input_channel=input_channel, num_classes=K)
     elif args.model == "wrn":
-        model = Wide_ResNet_Madry(depth=32, num_classes=K, widen_factor=10, dropRate=0.0)  # WRN-32-10
+        model = Wide_ResNet_Madry(depth=32, num_classes=K, widen_factor=10, dropRate=0.0, input_channel=input_channel)  # WRN-32-10
 
     display_num_param(model)
     model = model.to(device)
@@ -320,15 +321,15 @@ def get_pred(cl_model, data):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Learning with Complementary Labels')
-    parser.add_argument('--cl_lr', type=float, default=5e-5, help='learning rate for complementary learning')
+    parser.add_argument('--cl_lr', type=float, default=1e-3, help='learning rate for complementary learning')
     parser.add_argument('--at_lr', type=float, default=1e-2, help='learning rate for adversarial training')
     parser.add_argument('--batch_size', type=int, default=256, help='batch_size of ordinary labels.')
     parser.add_argument('--cl_num', type=int, default=1, help='(1-9): the number of complementary labels of each data; (0): mul-cls data distribution of ICML2020')
     parser.add_argument('--dataset', type=str, default="mnist", choices=['mnist', 'kuzushiji', 'fashion', 'cifar10', 'svhn', 'cifar100'],
                         help="dataset, choose from mnist, kuzushiji, fashion, cifar10, svhn, cifar100")
     parser.add_argument('--framework', type=str, default='one_stage', choices=['one_stage', 'two_stage'])
-    parser.add_argument('--method', type=str, default='exp', choices=['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp',
-                        'scl_nl', 'mae', 'mse', 'ce', 'gce', 'phuber_ce', 'log', 'exp', 'l_uw', 'l_w', 'log_ce'])
+    parser.add_argument('--method', type=str, default='log', choices=['free', 'nn', 'ga', 'pc', 'forward', 'scl_exp',
+                        'scl_nl', 'mae', 'mse', 'ce', 'gce', 'phuber_ce', 'log', 'exp', 'l_uw', 'l_w', 'log_ce', 'exp_ce'])
     parser.add_argument('--model', type=str, default='cnn', choices=['linear', 'mlp', 'cnn', 'resnet18', 'densenet', 'preact_resnet18', 'wrn'], help='model name')
     parser.add_argument('--cl_epochs', default=0, type=int, help='number of epochs for cl learning')
     parser.add_argument('--adv_epochs', default=100, type=int, help='number of epochs for adv')
@@ -345,7 +346,7 @@ if __name__ == "__main__":
     parser.add_argument('--warmup_epoch', type=int, default=0, help='warmup epoch for exponential moving average')
     args = parser.parse_args()
 
-    # To be removed
+    # Hardcoded
     if args.dataset in ["cifar10", "svhn", "cifar100"]:
         args.weight_decay, args.batch_size = 5e-4, 128
         args.epsilon, args.num_steps, args.step_size = 8/255, 10, 2/255

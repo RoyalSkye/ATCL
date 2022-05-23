@@ -12,5 +12,5 @@ __pycache__/
 .idea/
 
 # private files
-utils_plot.py
+utils_plot*
 tmp/

@@ -112,6 +112,22 @@ def log_loss(outputs, partialY):
     return average_loss
 
 
+def exp_ce_loss(outputs, partialY, pseudo_labels, alpha):
+    k = partialY.shape[1]
+    can_num = partialY.sum(dim=1).float()  # n
+
+    soft_max = nn.Softmax(dim=1)
+    sm_outputs = soft_max(outputs)
+    final_outputs = sm_outputs * partialY  # \sum_{j\notin \bar{Y}} [p(j|x)]
+
+    pred_outputs = sm_outputs[torch.arange(sm_outputs.size(0)), pseudo_labels]  # p(pl|x)
+    # pred_outputs, _ = torch.max(final_outputs, dim=1)  # \max \sum_{j\notin \bar{Y}} [p(j|x)]
+
+    average_loss = ((k - 1) / (k - can_num) * torch.exp(-alpha * final_outputs.sum(dim=1) - (1 - alpha) * pred_outputs)).mean()
+
+    return average_loss
+
+
 def exp_loss(outputs, partialY):
     k = partialY.shape[1]
     can_num = partialY.sum(dim=1).float()  # n

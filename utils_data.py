@@ -127,12 +127,6 @@ def generate_mul_comp_labels(data, labels, s):
         idx = np.random.randint(0, k - 1 - i, n)
         comp_labels = candidates_[np.arange(n), np.array(idx)]
         partialY[index_ins, torch.from_numpy(comp_labels)] = 0
-        if i == 0:
-            complementary_labels = torch.from_numpy(comp_labels)
-            multiple_data = data
-        else:
-            complementary_labels = torch.cat((complementary_labels, torch.from_numpy(comp_labels)), dim=0)
-            multiple_data = torch.cat((multiple_data, data), dim=0)
         labels_hat = comp_labels
     return partialY
 

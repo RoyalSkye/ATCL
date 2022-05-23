@@ -48,14 +48,14 @@ class NetworkBlock(nn.Module):
 
 
 class Wide_ResNet_Madry(nn.Module):
-    def __init__(self, depth=34, num_classes=10, widen_factor=10, dropRate=0):
+    def __init__(self, depth=34, num_classes=10, widen_factor=10, dropRate=0, input_channel=3):
         super(Wide_ResNet_Madry, self).__init__()
         nChannels = [16, 16 * widen_factor, 32 * widen_factor, 64 * widen_factor]
         assert ((depth - 2) % 6 == 0)
         n = (depth - 2) / 6
         block = BasicBlock
         # 1st conv before any network block
-        self.conv1 = nn.Conv2d(3, nChannels[0], kernel_size=3, stride=1,
+        self.conv1 = nn.Conv2d(input_channel, nChannels[0], kernel_size=3, stride=1,
                                padding=1, bias=False)
         # 1st block
         self.block1 = NetworkBlock(n, nChannels[0], nChannels[1], block, 1, dropRate)
