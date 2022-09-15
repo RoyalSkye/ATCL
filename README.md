@@ -2,15 +2,15 @@
 
 [![OpenReview](https://img.shields.io/badge/OpenReview-Forum-brightgreen.svg)](https://openreview.net/forum?id=s7SukMH7ie9)&nbsp;&nbsp;&nbsp;&nbsp;[![PDF](https://img.shields.io/badge/Download-PDF-blue.svg)](https://openreview.net/pdf?id=s7SukMH7ie9)
 
-Official (Pytorch) Implementation of NeurIPS 2022 Poster "Adversarial Training with Complementary Labels: On the Benefit of Gradually Informative Attacks" by [Jianan Zhou*](https://openreview.net/profile?id=~Jianan_Zhou1)*,* [Jianing Zhu*](https://openreview.net/profile?id=~Jianing_Zhu2)*,* [Jingfeng Zhang](https://openreview.net/profile?id=~Jingfeng_Zhang1)*,* [Tongliang Liu](https://openreview.net/profile?id=~Tongliang_Liu1)*,* [Gang Niu](https://openreview.net/profile?id=~Gang_Niu1)*,* [Bo Han](https://openreview.net/profile?id=~Bo_Han1)*,* [Masashi Sugiyama](https://openreview.net/profile?id=~Masashi_Sugiyama1).
+Official (Pytorch) Implementation of NeurIPS 2022 Poster *"Adversarial Training with Complementary Labels: On the Benefit of Gradually Informative Attacks"* by [Jianan Zhou*](https://openreview.net/profile?id=~Jianan_Zhou1)*,* [Jianing Zhu*](https://openreview.net/profile?id=~Jianing_Zhu2)*,* [Jingfeng Zhang](https://openreview.net/profile?id=~Jingfeng_Zhang1)*,* [Tongliang Liu](https://openreview.net/profile?id=~Tongliang_Liu1)*,* [Gang Niu](https://openreview.net/profile?id=~Gang_Niu1)*,* [Bo Han](https://openreview.net/profile?id=~Bo_Han1)*,* [Masashi Sugiyama](https://openreview.net/profile?id=~Masashi_Sugiyama1).
 
 ```bash
 @inproceedings{zhou2022adversarial,
-	title={Adversarial Training with Complementary Labels: On the Benefit of Gradually Informative Attacks},
-	author={Jianan Zhou and Jianing Zhu and Jingfeng Zhang and Tongliang Liu and Gang Niu and Bo Han and Masashi Sugiyama},
-	booktitle={Advances in Neural Information Processing Systems},
-	year={2022},
-	url={https://openreview.net/forum?id=s7SukMH7ie9}
+title={Adversarial Training with Complementary Labels: On the Benefit of Gradually Informative Attacks},
+author={Jianan Zhou and Jianing Zhu and Jingfeng Zhang and Tongliang Liu and Gang Niu and Bo Han and Masashi Sugiyama},
+booktitle={Advances in Neural Information Processing Systems},
+year={2022},
+url={https://openreview.net/forum?id=s7SukMH7ie9}
 }
 ```
 
@@ -21,6 +21,7 @@ Official (Pytorch) Implementation of NeurIPS 2022 Poster "Adversarial Training w
 <p align="center">
   <img src="./imgs/cl.png" alt="CLs" width="600"/>
 </p>
+
 ### Dependencies
 
 * Python 3.8
