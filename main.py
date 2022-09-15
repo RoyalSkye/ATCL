@@ -204,6 +204,7 @@ def at_param_schedule(args, epoch):
         elif args.scheduler == "none":
             eps = args.epsilon
         # return eps, eps, 1
+        # return eps, args.step_size, math.ceil(args.num_steps/args.epsilon*eps)
         return eps, args.step_size/args.epsilon*eps, args.num_steps
     else:
         return args.epsilon, args.step_size, args.num_steps
@@ -235,7 +236,7 @@ def cl_lr_schedule(lr, epoch, optimizer):
 
 def adv_lr_schedule(lr, epoch, optimizer):
     if args.dataset in ["mnist", "fashion", "kuzushiji"]:
-        # no lr_decay for small dataset
+        # no lr_decay for easy dataset
         pass
     elif args.dataset in ["cifar10", "svhn", "cifar100"]:
         if epoch == (30+args.warmup_epoch):

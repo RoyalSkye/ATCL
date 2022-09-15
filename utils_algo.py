@@ -72,10 +72,12 @@ def phi_loss(phi, logits, target, reduction='mean'):
         activated_prob = torch.pow(F.softmax(logits, dim=1), 2)
     elif phi == 'exp':
         activated_prob = torch.exp(F.softmax(logits, dim=1))
+        # activated_prob = torch.exp(alpha * F.softmax(logits, dim=1) - (1 - alpha) * pred_outputs)
     elif phi == 'log':
         activated_prob = torch.log(F.softmax(logits, dim=1))
     elif phi == 'nl':
         activated_prob = -torch.log(1 - F.softmax(logits, dim=1) + 1e-5)
+        # activated_prob = -torch.log(alpha * (1 - F.softmax(logits, dim=1) + 1e-5) + (1 - alpha) * pred_outputs)
     elif phi == 'hinge':
         activated_prob = F.softmax(logits, dim=1) - (1 / 10)
         activated_prob[activated_prob < 0] = 0
