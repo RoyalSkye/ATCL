@@ -81,7 +81,7 @@ python main.py --dataset 'cifar10' --model 'resnet18' --method 'log_ce' --framew
 
 ### Acknowledgments
 
-Thank the authors of *"Complementary-label learning for arbitrary losses and models"* for the open-source [code](https://github.com/takashiishida/comp) and issue discussion. Other codebases may be found on the corresponding author's homepage. We also would like to thank anonymous reviewers of NeurIPS 2022 for their constructive comments and recommendation.
+Thank the authors of *"Complementary-label learning for arbitrary losses and models"* for the open-source [code](https://github.com/takashiishida/comp) and issue discussion. Other codebases may be found on the corresponding author's homepage. We also would like to thank anonymous reviewers of NeurIPS 2022 for their constructive comments.
 
 ### Contact
 
